@@ -1,4 +1,5 @@
 # rekordbox bass notes
+
 Proof of concept. A local web app that reads your Rekordbox 6/7 library with
 [`pyrekordbox`](https://github.com/dylanljones/pyrekordbox), analyses a track's
 audio for sub-bass energy, and writes a token like **`B:l6m9h7`** into the
@@ -250,5 +251,6 @@ frontend/src/
                   AnalysisDetail, CommentDiff, ConfirmDialog,
                   BatchConfirmDialog, DbSwitcher, NoLibrary,
                   RekordboxBanner, RestorePanel
+frontend/public/fonts/Cube.ttf   display face for the "rekordbox bass notes" title
 config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
 ```

@@ -1,4 +1,4 @@
-# Rekordbox Bass-Profile Comment Tagger — POC Plan
+# rekordbox bass notes — POC Plan
 
 ## Goal
 

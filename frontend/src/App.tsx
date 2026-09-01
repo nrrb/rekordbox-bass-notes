@@ -79,7 +79,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <h1>Rekordbox Comment Tagger</h1>
+        <h1>rekordbox bass notes</h1>
         {!health ? (
           <div className="meta">
             <span className="muted">
@@ -199,7 +199,7 @@ export default function App() {
       )}
 
       <footer className="app-footer">
-        Rekordbox Comment Tagger{health ? ` v${health.version}` : ''}
+        rekordbox bass notes{health ? ` v${health.version}` : ''}
       </footer>
     </div>
   )

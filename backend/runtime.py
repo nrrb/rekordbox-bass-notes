@@ -5,7 +5,7 @@ preset letter, etc. This holds the two things an end user changes and that must
 survive a restart: which ``master.db`` to use and where backups go.
 
 Persisted to JSON:
-  - frozen app: ``~/Library/Application Support/RekordboxTagger/config.json``
+  - frozen app: ``~/Library/Application Support/rekordbox bass notes/config.json``
   - dev:        ``<repo>/.rkbx-config.json``  (gitignored)
 
 Precedence for each field: environment variable > config.json > built-in default.
@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .config import _REPO_ROOT, _b
 
-APP_NAME = "RekordboxTagger"
+APP_NAME = "rekordbox bass notes"
 _FROZEN = bool(getattr(sys, "frozen", False))
 
 

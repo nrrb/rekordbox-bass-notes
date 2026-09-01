@@ -1,6 +1,6 @@
 # frontend
 
-React + Vite + TypeScript SPA for the Rekordbox Comment Tagger.
+React + Vite + TypeScript SPA for rekordbox bass notes.
 
 - **Dev:** `npm install` then `npm run dev` (port 5173, proxies `/api` → the
   FastAPI backend on :8000). Start the backend separately:

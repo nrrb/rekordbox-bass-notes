@@ -143,7 +143,7 @@ async def lifespan(_app: FastAPI):
         _state["db"] = None
 
 
-app = FastAPI(title="Rekordbox Comment Tagger", lifespan=lifespan)
+app = FastAPI(title="rekordbox bass notes", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if getattr(sys, "frozen", False) else [settings.frontend_origin],

@@ -1,4 +1,4 @@
-# Distribution Plan — Rekordbox Comment Tagger for macOS
+# Distribution Plan — rekordbox bass notes for macOS
 
 Turning the POC into a tool a handful of DJ friends can install and use on their
 own Macs, against their own Rekordbox libraries.
@@ -12,14 +12,14 @@ setup. This document is only about packaging and shipping.
 
 Backend-only / additive hardening done **without disturbing the `npm run dev` +
 `uvicorn --reload` loop**, so UI tweaking could continue alongside. Decisions
-locked: app name **RekordboxTagger**; **soundfile-only** decoding for now
+locked: app name **rekordbox bass notes**; **soundfile-only** decoding for now
 (M4A/AAC/ALAC → a clear "not supported yet" error, `ffmpeg` in M4); **both**
 backup endpoints added.
 
 | # | Item | Touches | Status |
 |---|------|---------|--------|
 | 0.1 | **Drop librosa** → `soundfile` decode + `scipy.signal.resample_poly` to `AUDIO_SR`. Removed `audio_res_type`. Re-ran `calibrate.py`: 1 of ~117 tracks shifts one digit at a boundary → **`dbfs_scale` unchanged, `PRESET_LETTER=B`**. `AudioDecodeError` for unsupported/corrupt; M4A/AAC/ALAC → "not supported yet". audioread `DeprecationWarning` noise gone. | `analysis.py`, `config.py`, `requirements.txt` | ✅ |
-| 0.2 | **Runtime config** — `backend/runtime.py`: `RuntimeConfig {db_path, backup_dir}` persisted to JSON (`~/Library/Application Support/RekordboxTagger/config.json` frozen, `./.rkbx-config.json` gitignored in dev). Precedence env → file → default; **default db_path = "" (auto-locate the real library)**. `/api/db/switch` writes it (sticky across restart — verified). `db.backup()` / `_prune_backups` / `restore.py` read `backup_dir` from it. | `runtime.py` (new), `db.py`, `restore.py`, `main.py` | ✅ |
+| 0.2 | **Runtime config** — `backend/runtime.py`: `RuntimeConfig {db_path, backup_dir}` persisted to JSON (`~/Library/Application Support/rekordbox bass notes/config.json` frozen, `./.rkbx-config.json` gitignored in dev). Precedence env → file → default; **default db_path = "" (auto-locate the real library)**. `/api/db/switch` writes it (sticky across restart — verified). `db.backup()` / `_prune_backups` / `restore.py` read `backup_dir` from it. | `runtime.py` (new), `db.py`, `restore.py`, `main.py` | ✅ |
 | 0.3 | **Human error messages** — `humanize()` / `_http()` in `main.py`: library-not-found, Rekordbox open, audio moved, decode/format failure, unsupported-DB-version → plain sentences in `detail`, applied to the analyze / batch-stream / write / switch paths. No UI change. Verified. | `main.py` | ✅ |
 | 0.4 | **Backup endpoints** — `GET /api/backups` (listing + `RekordboxDB.stats()` for the live DB) and `POST /api/backups/{name}/restore` (409 if Rekordbox open → snapshot → `restore.apply_restore` → reopen, behind `_swap_lock`). `restore.py` refactored: `resolve_backup()` (raises, no `SystemExit`) + `apply_restore()` shared with the CLI. Full HTTP round-trip not run (Rekordbox was open — guard verified; mechanics covered by the CLI). Restore **panel** is UI work. | `main.py`, `restore.py`, `db.py` | ✅ |
 | 0.5 | **Additive static mount** — `app.mount("/", StaticFiles(frontend/dist, html=True))` last, only when `frontend/dist/index.html` exists (`sys._MEIPASS`-aware). Verified: skipped in dev; serves the SPA at `/` with `/api/*` still winning when a build is present. **`npm run dev` unaffected.** | `main.py` | ✅ |
@@ -128,7 +128,7 @@ Each subsection is flagged: ✅ done · 🟡 partly done · ⬜ not started.
 
 - `launcher.py` (PyInstaller entry point):
   1. resolve/first-run config (below), set up logging to
-     `~/Library/Logs/RekordboxTagger/`.
+     `~/Library/Logs/rekordbox bass notes/`.
   2. bind `127.0.0.1:0`, read back the port; single-instance lockfile in the
      app-support dir.
   3. start uvicorn in a thread.
@@ -154,13 +154,13 @@ Runtime deps after M4: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned
 ### 4. Config & writable paths — 🟡
 
 - ✅ `backend/runtime.py` — `db_path` + `backup_dir` persisted to
-  `config.json` (`~/Library/Application Support/RekordboxTagger/` frozen,
+  `config.json` (`~/Library/Application Support/rekordbox bass notes/` frozen,
   `./.rkbx-config.json` in dev). Precedence env → file → default. `/api/db/switch`
   and the restore endpoint write it.
-- ✅ Backups default to **`~/Music/RekordboxTagger Backups/`** when frozen
+- ✅ Backups default to **`~/Music/rekordbox bass notes Backups/`** when frozen
   (`backend/backups/` in dev).
 - ✅ `backend/__init__.py` `__version__` — in `/api/health` and the UI footer.
-- ⬜ **File logging** to `~/Library/Logs/RekordboxTagger/` (for "Copy
+- ⬜ **File logging** to `~/Library/Logs/rekordbox bass notes/` (for "Copy
   diagnostics"). Nothing writes there yet.
 - ⬜ `last_seen_version` in `config.json` for the update-check banner (M6).
 
@@ -216,8 +216,8 @@ logging lands.)
 ### PyInstaller spec essentials
 
 ```
-pyinstaller --name RekordboxTagger --windowed --noconfirm \
-  --osx-bundle-identifier com.<you>.rekordboxtagger \
+pyinstaller --name "rekordbox bass notes" --windowed --noconfirm \
+  --osx-bundle-identifier com.<you>.rekordbox-bass-notes \
   --target-arch arm64 \
   --collect-all pyrekordbox \
   --collect-all soundfile \
@@ -258,7 +258,7 @@ Known gotchas for this stack:
 ### Reproducible build
 
 - A `scripts/build_app.sh` that: `npm ci && npm run build`, `pyinstaller
-  RekordboxTagger.spec`, `create-dmg`, prints the artifact path + SHA256.
+  "rekordbox bass notes.spec"`, `create-dmg`, prints the artifact path + SHA256.
 - Run it on an Apple Silicon Mac matching the deployment floor. PyInstaller does
   **not** cross-compile — an Intel build needs an Intel (or Rosetta) machine.
 
@@ -270,12 +270,12 @@ Only when v1 has proven useful. One-time setup, then scripted.
 
 1. Apple Developer Program ($99/yr) → **Developer ID Application** certificate.
 2. `codesign --deep --force --options runtime --timestamp --sign "Developer ID
-   Application: <name> (<team>)" RekordboxTagger.app`
+   Application: <name> (<team>)" "rekordbox bass notes.app"`
    - hardened runtime; entitlements file allowing the JIT-free basics. A
      **non-sandboxed** Developer ID app can read `~/Library/Pioneer/…` without
      security-scoped bookmarks.
 3. Zip → `xcrun notarytool submit --wait --apple-id … --team-id … --password
-   <app-specific>` → `xcrun stapler staple RekordboxTagger.app`.
+   <app-specific>` → `xcrun stapler staple "rekordbox bass notes.app"`.
 4. Sign the `.dmg` too, staple it.
 
 Result: friends double-click, no Gatekeeper dialog. Enables Sparkle-based
@@ -331,7 +331,7 @@ this on one trusted friend's machine before sending to the rest.
 | Backup folder fills the disk | `BACKUP_KEEP` default 20; show total size in the Backups panel. |
 | Unsigned-app confusion | README with the exact right-click→Open / `xattr` steps and a screenshot. |
 | A friend on Intel | Ask first; ship an `x86_64` build or tell them to wait. |
-| Something breaks in the field | Logs at `~/Library/Logs/RekordboxTagger/`; an in-app "Copy diagnostics" button; you fix and re-release. |
+| Something breaks in the field | Logs at `~/Library/Logs/rekordbox bass notes/`; an in-app "Copy diagnostics" button; you fix and re-release. |
 
 Set expectations explicitly: this is a personal tool shared among friends, not a
 supported product; it can break when Rekordbox updates.
@@ -347,7 +347,7 @@ backup endpoints, and the static mount.
 |---|---|---|---|
 | M0 | One process | `launcher.py` + pywebview, `127.0.0.1:0` port, graceful shutdown, single-instance lock | ~0.5 day |
 | M1 | Deps | bundle `ffmpeg` (`imageio-ffmpeg`) for M4A/AAC/ALAC; pin the rest of `requirements.txt` | ~0.5 day |
-| M2 | Loose ends | file logging to `~/Library/Logs/RekordboxTagger/`; native file dialog for the path fields; check RB v5 path variant | ~0.5 day |
+| M2 | Loose ends | file logging to `~/Library/Logs/rekordbox bass notes/`; native file dialog for the path fields; check RB v5 path variant | ~0.5 day |
 | M3 | ~~UI panels~~ | ✅ done — restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer, 70/30 layout, analysis cache, batch accordion, audio player + EQ | — |
 | M4 | Package | `.icns` icon; PyInstaller spec that runs frozen (sqlcipher3 / ffmpeg / data-file iterations); `scripts/build_app.sh` → `.dmg` (arm64) | ~1–2 days |
 | M5 | Field test | clean-machine / friend's-Mac run; fix what breaks; release to 1–2 people | ~0.5–1 day + iteration |

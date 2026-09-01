@@ -1,3 +1,10 @@
+/* --- app title display font --- */
+@font-face {
+  font-family: 'Cube';
+  src: url('/fonts/Cube.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
   --bg: #14151a;
@@ -37,7 +44,9 @@ body {
 
 header h1 {
   margin: 0 0 6px;
+  font-family: 'Cube', system-ui, -apple-system, sans-serif;
   font-size: 20px;
+  line-height: 1.2;
 }
 
 .meta {
