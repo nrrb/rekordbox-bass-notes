@@ -15,12 +15,14 @@ race where Rekordbox launches in between.
 """
 from __future__ import annotations
 
+import functools
 import os
 import shutil
+import threading
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional, TypeVar
 
 import psutil
 from pyrekordbox import Rekordbox6Database
@@ -70,10 +72,32 @@ class Track:
         )
 
 
+_F = TypeVar("_F", bound=Callable)
+
+
+def _locked(method: _F) -> _F:
+    """Serialise a public method behind ``self._lock``.
+
+    The one shared ``RekordboxDB`` is reached from several uvicorn threadpool
+    threads (sync endpoints run there). A SQLAlchemy ``Session`` is not
+    thread-safe, so every public entry point takes this reentrant lock;
+    internal helpers assume it is already held.
+    """
+
+    @functools.wraps(method)
+    def wrapper(self: "RekordboxDB", *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper  # type: ignore[return-value]
+
+
 class RekordboxDB:
     """Opens the database once and holds the session for the app lifetime.
 
-    Fine for a single-user local tool; not for concurrent writers.
+    Single-user only. All DB access is serialised by ``self._lock`` (see
+    ``_locked``); there is still no protection against a *second process*
+    writing concurrently.
     """
 
     def __init__(self, db_path: Optional[str] = None) -> None:
@@ -81,6 +105,7 @@ class RekordboxDB:
         self._db = Rekordbox6Database(path) if path else Rekordbox6Database()
         # resolved path to the actual master.db file, for backups
         self.db_path = Path(str(self._db.engine.url.database)).resolve()
+        self._lock = threading.RLock()
 
     def close(self) -> None:
         try:
@@ -89,12 +114,15 @@ class RekordboxDB:
             pass
 
     # ------------------------------------------------------------------ reads
+    @_locked
     def count_tracks(self) -> int:
         return sum(1 for _ in self._db.get_content())
 
+    @_locked
     def count_local_tracks(self) -> int:
         return sum(1 for c in self._db.get_content() if Track.from_content(c).has_file)
 
+    @_locked
     def list_tracks(
         self, search: Optional[str] = None, limit: Optional[int] = None
     ) -> list[Track]:
@@ -114,6 +142,7 @@ class RekordboxDB:
                 break
         return out
 
+    @_locked
     def get_track(self, track_id: str) -> Optional[Track]:
         content = self._get_raw_content(track_id)
         return Track.from_content(content) if content is not None else None
@@ -131,6 +160,7 @@ class RekordboxDB:
     # ----------------------------------------------------------------- writes
     BACKUP_TS_FMT = "%Y%m%dT%H%M%S_%f"  # microseconds -> no same-second collisions
 
+    @_locked
     def backup(self) -> Path:
         """Checkpoint the WAL and copy master.db (+ -wal/-shm) to backup_dir,
         then prune old backup sets down to ``settings.backup_keep``.
@@ -169,6 +199,7 @@ class RekordboxDB:
                       main.with_name(main.name + "-shm")):
                 p.unlink(missing_ok=True)
 
+    @_locked
     def set_comment(self, track_id: str, new_comment: str) -> tuple[str, str, Path]:
         """Set ``Commnt`` on a track and commit. Returns (old, new, backup_path).
 
@@ -185,6 +216,7 @@ class RekordboxDB:
         if rekordbox_running():
             raise RekordboxRunningError("Rekordbox is running; quit it and retry.")
 
+        self._reset_session()
         content = self._get_raw_content(track_id)
         if content is None:
             raise TrackNotFoundError(track_id)
@@ -192,11 +224,59 @@ class RekordboxDB:
         backup_path = self.backup()
         old = content.Commnt or ""
         content.Commnt = new_comment
+        self._commit_and_verify(backup_path)
+        return old, new_comment, backup_path
+
+    @_locked
+    def set_comments(
+        self, pairs: list[tuple[str, str]]
+    ) -> tuple[Path, list[tuple[str, str, str]]]:
+        """Atomically set ``Commnt`` on many tracks. ``pairs`` = [(track_id,
+        new_comment), ...]. One backup, one commit, one quick_check.
+
+        If any id is unknown, raises ``TrackNotFoundError`` (listing them) before
+        anything is written. Returns (backup_path, [(id, old, new), ...]).
+        """
+        if not pairs:
+            raise ValueError("no tracks given")
+        if rekordbox_running():
+            raise RekordboxRunningError("Rekordbox is running; quit it and retry.")
+
+        self._reset_session()
+        resolved: list[tuple[str, DjmdContent]] = []
+        missing: list[str] = []
+        for track_id, _ in pairs:
+            content = self._get_raw_content(track_id)
+            if content is None:
+                missing.append(track_id)
+            else:
+                resolved.append((track_id, content))
+        if missing:
+            raise TrackNotFoundError(", ".join(missing))
+
+        backup_path = self.backup()
+        changes: list[tuple[str, str, str]] = []
+        for (track_id, content), (_, new_comment) in zip(resolved, pairs):
+            old = content.Commnt or ""
+            content.Commnt = new_comment
+            changes.append((track_id, old, new_comment))
+        self._commit_and_verify(backup_path)
+        return backup_path, changes
+
+    def _reset_session(self) -> None:
+        """Clear any half-open transaction / stale identity map left by a prior
+        operation before starting a write. Cheap no-op on a clean session."""
+        try:
+            self._db.session.rollback()
+        except Exception:
+            pass
+
+    def _commit_and_verify(self, backup_path: Path) -> None:
         try:
             self._db.commit()
         except RuntimeError as e:
             # pyrekordbox's own guard: Rekordbox launched between our pre-check
-            # and commit(). Discard the uncommitted change.
+            # and commit(). Discard the uncommitted change(s).
             self._db.session.rollback()
             raise RekordboxRunningError(str(e)) from e
 
@@ -207,7 +287,6 @@ class RekordboxDB:
                 f"may have left master.db inconsistent. Restore the pre-write "
                 f"backup: {backup_path}  (python -m backend.restore <name>)"
             )
-        return old, new_comment, backup_path
 
 
 def rekordbox_running() -> bool:

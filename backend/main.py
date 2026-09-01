@@ -4,18 +4,23 @@
   GET  /api/tracks?search=&limit=
   GET  /api/tracks/{id}
   POST /api/tracks/{id}/analyze   -- audio analysis + proposed comment (no write)
-  PUT  /api/tracks/{id}/comment   -- write the comment (backup + commit)
+  POST /api/tracks/analyze        -- same, batch, streamed as NDJSON (no write)
+  PUT  /api/tracks/{id}/comment   -- write one comment (backup + commit)
+  PUT  /api/tracks/comments       -- write many comments atomically (one backup)
 
 Run:  .venv/bin/uvicorn backend.main:app --reload --port 8000
 """
 from __future__ import annotations
 
+import dataclasses
+import json
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, model_validator
 
 from .analysis import BandResult, analyze_file, merge_token
@@ -59,6 +64,34 @@ class CommentUpdateResult:
     old_comment: str
     new_comment: str
     backup_path: str
+
+
+class AnalyzeBatchRequest(BaseModel):
+    ids: list[str]
+
+
+class BatchCommentItem(BaseModel):
+    id: str
+    token: Optional[str] = None
+    comment: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "BatchCommentItem":
+        if (self.token is None) == (self.comment is None):
+            raise ValueError(f"item {self.id}: provide exactly one of 'token' or 'comment'")
+        return self
+
+
+class BatchCommentRequest(BaseModel):
+    items: list[BatchCommentItem]
+
+
+@dataclass
+class BatchCommentResult:
+    backup_path: str
+    count: int
+    results: list[dict]  # [{id, old_comment, new_comment}]
+
 
 _state: dict[str, RekordboxDB] = {}
 
@@ -143,6 +176,90 @@ def analyze_track(track_id: str) -> AnalyzeResponse:
         proposed_comment=merged.comment,
         merge_action=merged.action,
         existing_tokens=merged.existing_tokens,
+    )
+
+
+@app.post("/api/tracks/analyze")
+def analyze_batch(body: AnalyzeBatchRequest) -> StreamingResponse:
+    """Analyse many tracks; stream one NDJSON record per track as it finishes.
+
+    Each line: {id, index, total, ok, ...}. On ok: title, artist, token, bands,
+    current_comment, proposed_comment, merge_action, existing_tokens. On not-ok:
+    error. Never writes.
+    """
+    ids = body.ids
+    database = db()
+
+    def stream():
+        total = len(ids)
+        for i, track_id in enumerate(ids, 1):
+            rec: dict = {"id": track_id, "index": i, "total": total}
+            track = database.get_track(track_id)
+            if track is None:
+                rec |= {"ok": False, "error": "unknown track id"}
+            elif not track.has_file:
+                rec |= {"ok": False, "error": "no local audio file"}
+            else:
+                try:
+                    res = analyze_file(track.folder_path)
+                    merged = merge_token(track.comment, res.token)
+                    rec |= {
+                        "ok": True,
+                        "title": track.title,
+                        "artist": track.artist,
+                        "token": res.token,
+                        "bands": [dataclasses.asdict(b) for b in res.bands],
+                        "current_comment": track.comment,
+                        "proposed_comment": merged.comment,
+                        "merge_action": merged.action,
+                        "existing_tokens": merged.existing_tokens,
+                    }
+                except Exception as e:  # noqa: BLE001 - report per-track, keep going
+                    rec |= {"ok": False, "error": f"{type(e).__name__}: {e}"}
+            yield json.dumps(rec) + "\n"
+
+    return StreamingResponse(stream(), media_type="application/x-ndjson")
+
+
+@app.put("/api/tracks/comments", response_model=BatchCommentResult)
+def update_comments(body: BatchCommentRequest) -> BatchCommentResult:
+    """Write many comments in ONE transaction with ONE backup. All-or-nothing:
+    if any id is unknown the whole batch is rejected and nothing is written."""
+    if not body.items:
+        raise HTTPException(status_code=422, detail="no items")
+    ids = [it.id for it in body.items]
+    if len(set(ids)) != len(ids):
+        raise HTTPException(status_code=422, detail="duplicate track ids in batch")
+
+    database = db()
+    pairs: list[tuple[str, str]] = []
+    for it in body.items:
+        track = database.get_track(it.id)
+        if track is None:
+            raise HTTPException(status_code=404, detail=f"No track with ID {it.id}")
+        new_comment = (
+            merge_token(track.comment, it.token).comment
+            if it.token is not None
+            else (it.comment or "")
+        )
+        pairs.append((it.id, new_comment))
+
+    try:
+        backup_path, changes = database.set_comments(pairs)
+    except RekordboxRunningError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except TrackNotFoundError as e:
+        raise HTTPException(status_code=404, detail=f"Unknown track id(s): {e}")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+
+    return BatchCommentResult(
+        backup_path=str(backup_path),
+        count=len(changes),
+        results=[
+            {"id": tid, "old_comment": old, "new_comment": new}
+            for tid, old, new in changes
+        ],
     )
 
 
