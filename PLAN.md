@@ -243,8 +243,10 @@ column on the right (stacks below on narrow screens).
 1a. **Player** (`player.tsx` context + `PlayerPanel.tsx`) — **always shown** at the
    top of the right column (idle state when nothing is playing): one shared
    `<audio>` streaming `GET /api/tracks/{id}/audio` (Range-enabled), a Web Audio
-   `AnalyserNode` bar-chart EQ on a `<canvas>` (the rAF loop reads the node
-   through a ref), a seek bar with `m:ss` labels, play/pause, stop.
+   `AnalyserNode` spectrum analyser on a `<canvas>` — log frequency axis, first
+   three bars pinned to the colour-coded L/M/H sub-bass bands (`fftSize 4096`),
+   the rest a log-spaced spectrum; the rAF loop reads the node through a ref — a
+   seek bar with `m:ss` labels, play/pause, stop.
    **Analysis cache** (`analysisCache.tsx`): results are kept per track id for the
    life of the current library (cleared on DB switch / restore), so deselecting and
    reselecting a track shows its result immediately, and the single / batch flows

@@ -83,7 +83,14 @@ Open <http://localhost:5173>.
    missing/relocated files are hidden). Check rows (or click them) to select;
    the header checkbox selects everything shown. The **▶ button** in each row
    plays that track through the always-visible player at the top of the right
-   column (play/pause, seek bar, a Web Audio bar-chart EQ).
+   column (play/pause, seek bar, a Web Audio spectrum analyser: a log-frequency
+   bar chart whose first three bars are the **L / M / H** sub-bass bands —
+   20–39 / 39–77 / 77–150 Hz, matching the analysis token — each letter-labelled
+   and in a cool cyan→violet palette that stays distinct in greyscale). The **l / m / h**
+   columns show the digits parsed out of any existing `B:l#m#h#` token in the
+   comment (blank if none). **Click any column header** to sort by it — first
+   click ascending, second descending, third clears; tracks with no token sort
+   to the bottom of the l/m/h sorts.
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
    dialog (old → new) → write. Results are **cached for the current library** —

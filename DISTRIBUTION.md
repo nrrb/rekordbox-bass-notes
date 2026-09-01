@@ -58,7 +58,9 @@ toward distribution:
   `python -m backend.restore` shares the same code.
 - **Audio player** — `GET /api/tracks/{id}/audio` (Range-enabled `FileResponse`);
   a ▶ button per row and an always-visible `PlayerPanel` (play/pause, seek,
-  Web Audio bar-chart EQ). The EQ draw loop reads the `AnalyserNode` through a
+  Web Audio spectrum analyser). The analyser uses a log frequency axis with the
+  first three bars pinned to the colour-coded L / M / H sub-bass bands (`fftSize
+  4096` for ~10 Hz resolution). The draw loop reads the `AnalyserNode` through a
   ref, so it attaches on the first play of a fresh load (earlier it needed a
   page refresh).
 - **Human errors** — `humanize()` maps the common failures to plain `detail`
@@ -76,9 +78,6 @@ toward distribution:
 
 ### Known rough edges
 
-- The player's EQ uses a **linear** bin→bar mapping, so a bass-heavy track only
-  really moves the first few bars. A log-spaced mapping over the low/mid spectrum
-  would look more like a proper analyzer — nice-to-have, not blocking.
 - The player has only been exercised in dev (Chrome via the Vite proxy); Range
   playback and Web Audio behaviour in the packaged pywebview (WebKit) shell are
   untested.

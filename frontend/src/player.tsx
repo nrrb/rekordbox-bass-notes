@@ -46,7 +46,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const ac = new AC()
     const src = ac.createMediaElementSource(audioRef.current)
     const an = ac.createAnalyser()
-    an.fftSize = 128
+    // 4096 → ~10 Hz bins at 44.1 kHz, fine enough to resolve the 20–150 Hz
+    // sub-bass split into separate L / M / H bars.
+    an.fftSize = 4096
     an.smoothingTimeConstant = 0.8
     src.connect(an)
     an.connect(ac.destination)
