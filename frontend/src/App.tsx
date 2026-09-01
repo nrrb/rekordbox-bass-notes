@@ -56,9 +56,25 @@ export default function App() {
     <div className="app">
       <header>
         <h1>Rekordbox Comment Tagger</h1>
-        <div className="meta">
-          {health ? (
-            <>
+        {health ? (
+          <>
+            <div className="meta">
+              <span
+                className={`db-badge db-${health.db_kind}`}
+                title={
+                  health.db_kind === 'live'
+                    ? 'Writing to your real Rekordbox library'
+                    : health.db_kind === 'sample'
+                      ? 'Writing to the bundled sample copy'
+                      : 'Custom REKORDBOX_DB_PATH'
+                }
+              >
+                {health.db_kind === 'live'
+                  ? 'LIVE LIBRARY'
+                  : health.db_kind === 'sample'
+                    ? 'SAMPLE COPY'
+                    : 'CUSTOM PATH'}
+              </span>
               <code>{health.db_path}</code>
               <span title={`${health.track_count} total in the library`}>
                 {health.local_track_count} tracks with files
@@ -66,11 +82,22 @@ export default function App() {
               <span className={health.rekordbox_running ? 'warn' : 'ok'}>
                 Rekordbox {health.rekordbox_running ? 'running' : 'closed'}
               </span>
-            </>
-          ) : (
+            </div>
+            {health.db_kind !== 'live' && health.detected_library_path && (
+              <div className="meta detected">
+                detected library: <code>{health.detected_library_path}</code>
+                <span className="muted">
+                  {' '}
+                  — run with <code>USE_LIVE_LIBRARY=1</code> to use it
+                </span>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="meta">
             <span className="muted">health unavailable</span>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       <div className="toolbar">

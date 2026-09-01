@@ -296,3 +296,18 @@ def rekordbox_running() -> bool:
         if name == "rekordbox" or name.startswith("rekordbox"):
             return True
     return False
+
+
+def detect_library_path() -> Optional[str]:
+    """The real Rekordbox library ``master.db``, from pyrekordbox's own config
+    discovery. Returns ``None`` if none is found. Does not open the database."""
+    try:
+        from pyrekordbox.config import get_config
+
+        for version in ("rekordbox7", "rekordbox6"):
+            path = get_config(version, "db_path")
+            if path:
+                return str(path)
+    except Exception:
+        pass
+    return None

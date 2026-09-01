@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Optional
@@ -24,8 +25,15 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, model_validator
 
 from .analysis import BandResult, analyze_file, merge_token
-from .config import settings
-from .db import RekordboxDB, RekordboxRunningError, Track, TrackNotFoundError, rekordbox_running
+from .config import SAMPLE_DB_PATH, settings
+from .db import (
+    RekordboxDB,
+    RekordboxRunningError,
+    Track,
+    TrackNotFoundError,
+    detect_library_path,
+    rekordbox_running,
+)
 
 
 @dataclass
@@ -119,11 +127,30 @@ def db() -> RekordboxDB:
     return _state["db"]
 
 
+def _same_path(a: str, b: Optional[str]) -> bool:
+    if not b:
+        return False
+    try:
+        return os.path.realpath(a) == os.path.realpath(b)
+    except Exception:
+        return a == b
+
+
 @app.get("/api/health")
 def health() -> dict:
     d = db()
+    current = str(d.db_path)
+    detected = detect_library_path()
+    if _same_path(current, detected):
+        db_kind = "live"
+    elif _same_path(current, SAMPLE_DB_PATH):
+        db_kind = "sample"
+    else:
+        db_kind = "custom"
     return {
-        "db_path": settings.db_path or "(auto-located)",
+        "db_path": current,
+        "db_kind": db_kind,  # "live" | "sample" | "custom"
+        "detected_library_path": detected,
         "rekordbox_running": rekordbox_running(),
         "track_count": d.count_tracks(),
         "local_track_count": d.count_local_tracks(),

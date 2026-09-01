@@ -99,7 +99,8 @@ All via environment variables; defaults live in `backend/config.py`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `REKORDBOX_DB_PATH` | `sample/master.db` | Path to `master.db` (file or its dir). Set to `""` to let `pyrekordbox` auto-locate the live DB. |
+| `REKORDBOX_DB_PATH` | `sample/master.db` | Path to `master.db` (file or its dir). Set to `""` to let `pyrekordbox` auto-locate the live library. |
+| `USE_LIVE_LIBRARY` | _(unset)_ | `1` / `true` — shorthand for "auto-locate the live library" (overrides `REKORDBOX_DB_PATH`). |
 | `BACKUP_DIR` | `backend/backups/` | Where write backups go. |
 | `BACKUP_KEEP` | `20` | Max backup sets kept; older ones pruned after each write. `0` = keep all. |
 | `RESULT_LIMIT` | `500` | Max tracks returned by `/api/tracks`. |
@@ -160,14 +161,16 @@ reversible), then copies the chosen backup over `master.db` and clears the live
 ## Going live (against your real library)
 
 1. **Quit Rekordbox** completely. Pause Rekordbox cloud/library sync if you use it.
-2. Point at the real DB:
+2. Point at the real library:
    ```sh
-   export REKORDBOX_DB_PATH=""   # auto-locate ~/Library/Pioneer/rekordbox{,7}/master.db
+   export USE_LIVE_LIBRARY=1          # pyrekordbox auto-locates it
    # or an explicit path:
-   export REKORDBOX_DB_PATH="$HOME/Library/Pioneer/rekordbox7/master.db"
+   export REKORDBOX_DB_PATH="$HOME/Library/Pioneer/rekordbox/master.db"
    ```
-3. Restart the backend. The health bar shows the resolved path and "Rekordbox
-   closed".
+   (`python -m backend.inspect_db` and `/api/health`'s `detected_library_path`
+   both print what auto-locate resolves to.)
+3. Restart the backend. The header badge turns **LIVE LIBRARY** (red) and shows
+   the resolved path.
 4. Analyze and save **one** track. Reopen Rekordbox and check its Comment.
 5. If anything looks off: `python -m backend.restore`.
 
@@ -190,7 +193,7 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/health` | `{ db_path, rekordbox_running, track_count, local_track_count }` |
+| `GET` | `/api/health` | `{ db_path, db_kind (live|sample|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
 | `POST` | `/api/tracks/{id}/analyze` | Analyse one track + proposed comment. **No write.** 404 / 422 (no local file) / 500 |

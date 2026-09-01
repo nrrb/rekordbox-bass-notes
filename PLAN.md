@@ -203,7 +203,7 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 
 | Method | Path                          | Body                          | Returns |
 |--------|-------------------------------|-------------------------------|---------|
-| GET    | `/api/health`                 | –                             | `{ db_path, rekordbox_running, track_count, local_track_count }` |
+| GET    | `/api/health`                 | –                             | `{ db_path, db_kind (live|sample|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
 | GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
 | GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
 | POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[…], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |

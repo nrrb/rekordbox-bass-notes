@@ -49,6 +49,33 @@ header h1 {
   border-radius: 4px;
 }
 
+.meta.detected {
+  margin-top: 6px;
+}
+
+.db-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.db-badge.db-live {
+  background: rgba(224, 100, 90, 0.2);
+  color: var(--error);
+  border: 1px solid rgba(224, 100, 90, 0.5);
+}
+.db-badge.db-sample {
+  background: rgba(78, 201, 138, 0.18);
+  color: var(--ok);
+  border: 1px solid rgba(78, 201, 138, 0.45);
+}
+.db-badge.db-custom {
+  background: rgba(224, 163, 74, 0.18);
+  color: var(--warn);
+  border: 1px solid rgba(224, 163, 74, 0.45);
+}
+
 .meta .ok {
   color: var(--ok);
 }

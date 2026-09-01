@@ -11,6 +11,8 @@ export interface Track {
 
 export interface Health {
   db_path: string
+  db_kind: 'live' | 'sample' | 'custom'
+  detected_library_path: string | null
   rekordbox_running: boolean
   track_count: number
   local_track_count: number
