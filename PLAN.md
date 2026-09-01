@@ -210,6 +210,7 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 | POST   | `/api/tracks/analyze`         | `{ ids: [...] }`              | **NDJSON stream**, one line per track: `{id, index, total, ok, …}` (ok adds token/bands/proposed_comment/…; not-ok adds `error`). No write. |
 | PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
 | PUT    | `/api/tracks/comments`        | `{ items: [{id, token\|comment}] }` | `{ backup_path, count, results:[{id, old_comment, new_comment}] }` — **atomic**: one backup, one `commit()`, one `quick_check`; any unknown id → 404, nothing written; dup ids → 422 |
+| POST   | `/api/db/switch`              | `{ target: "live"\|"sample"\|"custom", path? }` | Reopen the shared `RekordboxDB` against another `master.db` at runtime (in-process; a real restart reverts to env/default). Returns fresh `/api/health`. 422 if the target won't open. |
 
 - Single shared DB instance opened at startup, closed on shutdown (`lifespan`).
 - CORS allowed for `http://localhost:5173`.

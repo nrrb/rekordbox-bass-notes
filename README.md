@@ -161,18 +161,17 @@ reversible), then copies the chosen backup over `master.db` and clears the live
 ## Going live (against your real library)
 
 1. **Quit Rekordbox** completely. Pause Rekordbox cloud/library sync if you use it.
-2. Point at the real library:
-   ```sh
-   export USE_LIVE_LIBRARY=1          # pyrekordbox auto-locates it
-   # or an explicit path:
-   export REKORDBOX_DB_PATH="$HOME/Library/Pioneer/rekordbox/master.db"
-   ```
+2. Point at the real library — either:
+   - **In the UI:** click **switch to live library** in the header, confirm. The
+     header badge turns **LIVE LIBRARY** (red). This is runtime-only; a backend
+     restart reverts to the default.
+   - **Persistently:** run the backend with `USE_LIVE_LIBRARY=1` (or
+     `REKORDBOX_DB_PATH="$HOME/Library/Pioneer/rekordbox/master.db"`).
+
    (`python -m backend.inspect_db` and `/api/health`'s `detected_library_path`
-   both print what auto-locate resolves to.)
-3. Restart the backend. The header badge turns **LIVE LIBRARY** (red) and shows
-   the resolved path.
-4. Analyze and save **one** track. Reopen Rekordbox and check its Comment.
-5. If anything looks off: `python -m backend.restore`.
+   both show what auto-locate resolves to.)
+3. Analyze and save **one** track. Reopen Rekordbox and check its Comment.
+4. If anything looks off: `python -m backend.restore`.
 
 ---
 
@@ -200,6 +199,7 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 | `POST` | `/api/tracks/analyze` | Body `{"ids": [...]}`. Analyse many; response is an **NDJSON stream**, one line per track as it finishes. **No write.** |
 | `PUT` | `/api/tracks/{id}/comment` | Body `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
 | `PUT` | `/api/tracks/comments` | Body `{"items": [{"id", "token"\|"comment"}]}`. Writes all in **one transaction with one backup**. Any unknown id rejects the whole batch (nothing written); duplicate ids → 422 |
+| `POST` | `/api/db/switch` | Body `{"target": "live"\|"sample"}`. Reopens the backend against that database at runtime. Returns fresh health. 422 if it won't open. |
 
 ---
 

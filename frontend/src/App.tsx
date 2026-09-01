@@ -3,6 +3,7 @@ import './App.css'
 import { fetchHealth } from './api'
 import { AnalyzePanel } from './components/AnalyzePanel'
 import { BatchPanel } from './components/BatchPanel'
+import { DbSwitcher } from './components/DbSwitcher'
 import { TrackTable } from './components/TrackTable'
 import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
@@ -82,14 +83,18 @@ export default function App() {
               <span className={health.rekordbox_running ? 'warn' : 'ok'}>
                 Rekordbox {health.rekordbox_running ? 'running' : 'closed'}
               </span>
+              <DbSwitcher
+                health={health}
+                onSwitched={(h) => {
+                  setHealth(h)
+                  clearSelection()
+                  refetch()
+                }}
+              />
             </div>
             {health.db_kind !== 'live' && health.detected_library_path && (
               <div className="meta detected">
                 detected library: <code>{health.detected_library_path}</code>
-                <span className="muted">
-                  {' '}
-                  — run with <code>USE_LIVE_LIBRARY=1</code> to use it
-                </span>
               </div>
             )}
           </>

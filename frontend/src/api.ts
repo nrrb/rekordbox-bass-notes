@@ -26,6 +26,15 @@ export function fetchHealth(): Promise<Health> {
   return getJSON<Health>('/api/health')
 }
 
+/** Reopen the backend against a different master.db at runtime. Returns fresh health. */
+export function switchDb(target: 'live' | 'sample'): Promise<Health> {
+  return getJSON<Health>('/api/db/switch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target }),
+  })
+}
+
 export function fetchTracks(params: { search?: string; limit?: number } = {}): Promise<Track[]> {
   const qs = new URLSearchParams()
   if (params.search) qs.set('search', params.search)

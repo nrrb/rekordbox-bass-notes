@@ -53,6 +53,16 @@ header h1 {
   margin-top: 6px;
 }
 
+.db-switch {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.db-switch .warn {
+  font-size: 11px;
+}
+
 .db-badge {
   font-size: 10px;
   font-weight: 700;

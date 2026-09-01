@@ -15,6 +15,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Optional
@@ -101,7 +102,21 @@ class BatchCommentResult:
     results: list[dict]  # [{id, old_comment, new_comment}]
 
 
+class DbSwitchRequest(BaseModel):
+    target: str  # "live" | "sample" | "custom"
+    path: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _valid(self) -> "DbSwitchRequest":
+        if self.target not in ("live", "sample", "custom"):
+            raise ValueError("target must be 'live', 'sample' or 'custom'")
+        if self.target == "custom" and not self.path:
+            raise ValueError("'custom' target requires 'path'")
+        return self
+
+
 _state: dict[str, RekordboxDB] = {}
+_swap_lock = threading.Lock()
 
 
 @asynccontextmanager
@@ -155,6 +170,38 @@ def health() -> dict:
         "track_count": d.count_tracks(),
         "local_track_count": d.count_local_tracks(),
     }
+
+
+@app.post("/api/db/switch")
+def switch_db(body: DbSwitchRequest) -> dict:
+    """Reopen the backend against a different master.db at runtime.
+
+    In-process only — an actual server restart reverts to the env/default. On
+    failure the current database is left in place.
+    """
+    if body.target == "live":
+        new_path = ""  # empty -> pyrekordbox auto-locates
+    elif body.target == "sample":
+        new_path = SAMPLE_DB_PATH
+    else:
+        new_path = body.path or ""
+
+    with _swap_lock:
+        try:
+            new_db = RekordboxDB(new_path)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(
+                status_code=422, detail=f"Could not open the {body.target} database: {e}"
+            ) from e
+        old = _state.get("db")
+        _state["db"] = new_db
+        if old is not None:
+            try:
+                with old._lock:  # drain any in-flight operation before closing
+                    old.close()
+            except Exception:
+                pass
+    return health()
 
 
 @app.get("/api/tracks", response_model=list[Track])
