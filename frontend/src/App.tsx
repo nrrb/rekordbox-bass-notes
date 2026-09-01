@@ -5,15 +5,18 @@ import { AnalyzePanel } from './components/AnalyzePanel'
 import { BatchPanel } from './components/BatchPanel'
 import { DbSwitcher } from './components/DbSwitcher'
 import { NoLibrary } from './components/NoLibrary'
+import { PlayerPanel } from './components/PlayerPanel'
 import { RekordboxBanner } from './components/RekordboxBanner'
 import { RestorePanel } from './components/RestorePanel'
 import { TrackTable } from './components/TrackTable'
+import { usePlayer } from './player'
 import { useHealth } from './hooks/useHealth'
 import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
 
 export default function App() {
   const cache = useAnalysisCache()
+  const player = usePlayer()
   const { health, reachable, reload: reloadHealth, setHealth } = useHealth()
   const { tracks, loading, error, refetch } = useTracks()
   const [search, setSearch] = useState('')
@@ -163,6 +166,8 @@ export default function App() {
               </div>
 
               <aside className="workspace-detail">
+                <PlayerPanel track={tracks.find((t) => t.id === player.currentId)} />
+
                 {selectedTracks.length === 0 && (
                   <p className="detail-empty muted">
                     Select a track to analyse its low end. Pick two or more for a

@@ -79,7 +79,9 @@ Open <http://localhost:5173>.
 
 1. The list shows **only tracks with a local audio file** (streaming and
    missing/relocated files are hidden). Check rows (or click them) to select;
-   the header checkbox selects everything shown.
+   the header checkbox selects everything shown. The **▶ button** in each row
+   plays that track through the in-app player (top of the right column: seek
+   bar, a bar-chart EQ, play/pause).
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
    dialog (old → new) → write. Results are **cached for the current library** —
@@ -204,6 +206,7 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 | `GET` | `/api/health` | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, … }` — the UI polls this every 5 s |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
+| `GET` | `/api/tracks/{id}/audio` | Streams the local audio file (Range/seek supported) for the player |
 | `POST` | `/api/tracks/{id}/analyze` | Analyse one track + proposed comment. **No write.** 404 / 422 (no local file) / 500 |
 | `POST` | `/api/tracks/analyze` | Body `{"ids": [...]}`. Analyse many; response is an **NDJSON stream**, one line per track as it finishes. **No write.** |
 | `PUT` | `/api/tracks/{id}/comment` | Body `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
@@ -230,10 +233,12 @@ backend/
 frontend/src/
   App.tsx, api.ts, types.ts
   analysisCache.tsx  results kept per track id for the current library
+  player.tsx         one <audio> + Web Audio AnalyserNode (Context)
   hooks/          useHealth (5 s poll), useTracks, useBackups,
                   useAnalyze(+Batch), useUpdateComment(+Batch)
-  components/     TrackTable, AnalyzePanel, BatchPanel, AnalysisDetail,
-                  CommentDiff, ConfirmDialog, BatchConfirmDialog, DbSwitcher,
-                  NoLibrary, RekordboxBanner, RestorePanel
+  components/     TrackTable, PlayerPanel, AnalyzePanel, BatchPanel,
+                  AnalysisDetail, CommentDiff, ConfirmDialog,
+                  BatchConfirmDialog, DbSwitcher, NoLibrary,
+                  RekordboxBanner, RestorePanel
 config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
 ```

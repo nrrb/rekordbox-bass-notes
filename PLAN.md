@@ -206,6 +206,7 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 | GET    | `/api/health`                 | –                             | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, track_count, local_track_count }` — `none` + nulls when no DB is open; polled by the UI every 5 s |
 | GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
 | GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
+| GET    | `/api/tracks/{id}/audio`     | (Range)                        | streams the local audio file (`FileResponse`, `Accept-Ranges: bytes` → seeking); 404 / 422 no local file |
 | POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[…], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
 | POST   | `/api/tracks/analyze`         | `{ ids: [...] }`              | **NDJSON stream**, one line per track: `{id, index, total, ok, …}` (ok adds token/bands/proposed_comment/…; not-ok adds `error`). No write. |
 | PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
@@ -235,10 +236,14 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 Two-column workspace: the track list at **70%** width, a sticky **30%** detail
 column on the right (stacks below on narrow screens).
 
-1. **Track list** (`TrackTable.tsx`) — Title / Artist / Album / Genre / Comment with a
-   client-side search box and a **checkbox per row** (row click also toggles) plus a
-   select-all-shown header box. **Only tracks with a real local audio file are listed**
-   (`list_tracks` filters on `has_file`). Backend caps results (e.g. 500).
+1. **Track list** (`TrackTable.tsx`) — a **play/pause button** then Title / Artist /
+   Album / Genre / Comment, with a client-side search box and a **checkbox per row**
+   (row click also toggles) plus a select-all-shown header box. **Only tracks with a
+   real local audio file are listed** (`list_tracks` filters on `has_file`).
+1a. **Player** (`player.tsx` context + `PlayerPanel.tsx`) — top of the right column
+   when something is playing: one shared `<audio>` streaming
+   `GET /api/tracks/{id}/audio` (Range-enabled), a Web Audio `AnalyserNode`
+   bar-chart EQ on a `<canvas>`, a seek bar with `m:ss` labels, play/pause, stop.
    **Analysis cache** (`analysisCache.tsx`): results are kept per track id for the
    life of the current library (cleared on DB switch / restore), so deselecting and
    reselecting a track shows its result immediately, and the single / batch flows
@@ -293,14 +298,16 @@ writertest/
     ├── vite.config.ts
     └── src/
         ├── App.tsx
-        ├── api.ts   types.ts   analysisCache.tsx (Context: results by track id)
+        ├── api.ts   types.ts
+        ├── analysisCache.tsx (Context: results by track id)
+        ├── player.tsx        (Context: one <audio> + Web Audio AnalyserNode)
         ├── hooks/
         │   ├── useHealth.ts (5 s poll)   useTracks.ts   useBackups.ts
         │   ├── useAnalyze.ts             useUpdateComment.ts
         │   └── useBatchAnalyze.ts        useBatchUpdate.ts
         └── components/
             ├── TrackTable.tsx        AnalysisDetail.tsx (shared)
-            ├── AnalyzePanel.tsx      ConfirmDialog.tsx
+            ├── PlayerPanel.tsx       AnalyzePanel.tsx     ConfirmDialog.tsx
             ├── BatchPanel.tsx        BatchConfirmDialog.tsx
             ├── CommentDiff.tsx       DbSwitcher.tsx
             └── NoLibrary.tsx  RekordboxBanner.tsx  RestorePanel.tsx

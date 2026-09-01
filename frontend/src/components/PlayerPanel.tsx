@@ -1,0 +1,107 @@
+import { useEffect, useRef } from 'react'
+import { usePlayer } from '../player'
+import type { Track } from '../types'
+
+function fmt(s: number): string {
+  if (!isFinite(s) || s < 0) return '0:00'
+  const m = Math.floor(s / 60)
+  const sec = Math.floor(s % 60)
+  return `${m}:${sec.toString().padStart(2, '0')}`
+}
+
+const BARS = 28
+
+export function PlayerPanel({ track }: { track: Track | undefined }) {
+  const player = usePlayer()
+  const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const rafRef = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const g = canvas.getContext('2d')
+    if (!g) return
+    const accent =
+      getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6ea8fe'
+    const muted =
+      getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#2c2f3a'
+
+    const draw = () => {
+      rafRef.current = requestAnimationFrame(draw)
+      const w = (canvas.width = canvas.clientWidth || 280)
+      const h = (canvas.height = canvas.clientHeight || 44)
+      g.clearRect(0, 0, w, h)
+      const bw = w / BARS
+
+      const an = player.analyser
+      const levels = new Array<number>(BARS).fill(0)
+      const live = !!an
+      if (an) {
+        const data = new Uint8Array(an.frequencyBinCount)
+        an.getByteFrequencyData(data)
+        const step = Math.max(1, Math.floor(data.length / BARS))
+        for (let i = 0; i < BARS; i++) {
+          let v = 0
+          for (let j = 0; j < step; j++) v = Math.max(v, data[i * step + j] || 0)
+          levels[i] = v
+        }
+      }
+
+      for (let i = 0; i < BARS; i++) {
+        const bh = live ? Math.max(2, (levels[i] / 255) * h) : 2
+        g.fillStyle = live && levels[i] > 8 ? accent : muted
+        g.fillRect(i * bw + 1, h - bh, Math.max(1, bw - 2), bh)
+      }
+    }
+    draw()
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+    }
+  }, [player.analyser])
+
+  if (!player.currentId) return null
+
+  return (
+    <div className="player">
+      <div className="player-top">
+        <button
+          className="player-play"
+          onClick={() => player.toggle(player.currentId as string)}
+          aria-label={player.playing ? 'Pause' : 'Play'}
+        >
+          {player.playing ? '❚❚' : '▶'}
+        </button>
+        <div className="player-title">
+          {track ? (
+            <>
+              <strong>{track.title || '—'}</strong>{' '}
+              <span className="muted">— {track.artist || '—'}</span>
+            </>
+          ) : (
+            player.currentId
+          )}
+        </div>
+        <button className="linklike" onClick={player.stop}>
+          stop
+        </button>
+      </div>
+
+      <canvas ref={canvasRef} className="player-eq" />
+
+      <div className="player-seek">
+        <span className="muted">{fmt(player.currentTime)}</span>
+        <input
+          type="range"
+          min={0}
+          max={player.duration || 0}
+          step={0.1}
+          value={Math.min(player.currentTime, player.duration || 0)}
+          onChange={(e) => player.seek(Number(e.target.value))}
+        />
+        <span className="muted">{fmt(player.duration)}</span>
+      </div>
+
+      {player.error && <p className="error">{player.error}</p>}
+    </div>
+  )
+}

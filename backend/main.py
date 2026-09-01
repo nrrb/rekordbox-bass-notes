@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import mimetypes
 import os
 import sys
 import threading
@@ -26,7 +27,7 @@ from . import __version__
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, model_validator
 
 from . import restore as restore_mod
@@ -269,6 +270,25 @@ def get_track(track_id: str) -> Track:
     if track is None:
         raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
     return track
+
+
+@app.get("/api/tracks/{track_id}/audio")
+def track_audio(track_id: str) -> FileResponse:
+    """Stream the track's audio file (Range-enabled, for the in-app player)."""
+    track = db().get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail="That track is no longer in the library.")
+    if not track.has_file:
+        raise HTTPException(
+            status_code=422, detail="This track's audio file has moved or is offline."
+        )
+    media_type = mimetypes.guess_type(track.folder_path)[0] or "application/octet-stream"
+    return FileResponse(
+        track.folder_path,
+        media_type=media_type,
+        filename=os.path.basename(track.folder_path),
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/api/tracks/{track_id}/analyze", response_model=AnalyzeResponse)
