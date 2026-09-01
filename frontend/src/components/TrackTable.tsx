@@ -21,7 +21,6 @@ export function TrackTable({ tracks, selectedId, onSelect }: Props) {
             <th>Album</th>
             <th>Genre</th>
             <th>Comment</th>
-            <th title="Local audio file present (analysable)">File</th>
           </tr>
         </thead>
         <tbody>
@@ -36,7 +35,6 @@ export function TrackTable({ tracks, selectedId, onSelect }: Props) {
               <td>{t.album || <span className="muted">—</span>}</td>
               <td>{t.genre || <span className="muted">—</span>}</td>
               <td className="comment-cell">{t.comment || <span className="muted">—</span>}</td>
-              <td className="center">{t.has_file ? '●' : <span className="muted">○</span>}</td>
             </tr>
           ))}
         </tbody>

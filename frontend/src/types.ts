@@ -13,6 +13,7 @@ export interface Health {
   db_path: string
   rekordbox_running: boolean
   track_count: number
+  local_track_count: number
 }
 
 export interface BandResult {
@@ -42,6 +43,6 @@ export interface AnalyzeResponse {
   token: string
   current_comment: string
   proposed_comment: string
-  merge_action: 'replaced' | 'appended'
+  merge_action: 'replaced' | 'prepended'
   existing_tokens: number
 }

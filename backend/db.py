@@ -88,14 +88,21 @@ class RekordboxDB:
     def count_tracks(self) -> int:
         return sum(1 for _ in self._db.get_content())
 
+    def count_local_tracks(self) -> int:
+        return sum(1 for c in self._db.get_content() if Track.from_content(c).has_file)
+
     def list_tracks(
         self, search: Optional[str] = None, limit: Optional[int] = None
     ) -> list[Track]:
+        """Only tracks backed by a local audio file on disk. Streaming entries
+        and tracks whose file is missing/relocated are excluded."""
         cap = settings.result_limit if limit is None else limit
         needle = (search or "").strip().lower()
         out: list[Track] = []
         for c in self._db.get_content():
             t = Track.from_content(c)
+            if not t.has_file:
+                continue
             if needle and needle not in f"{t.title} {t.artist} {t.album}".lower():
                 continue
             out.append(t)

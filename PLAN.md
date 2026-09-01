@@ -48,7 +48,7 @@ select track ──▶ "Analyze audio" ──▶ backend locates file (DjmdConte
                 per band: RMS → dBFS → digit 0–9 (per-band absolute dBFS scale)
                                           │
                                           ▼
-                     token "B:L{dL}M{dM}H{dH}"  +  merged-comment preview
+                     token "B:l{dL}m{dM}h{dH}"  +  merged-comment preview
                                           │
                      user reviews band table + diff ──▶ confirm modal ──▶ PUT ──▶ commit()
 ```
@@ -98,7 +98,8 @@ port just that.
 | dBFS → digit        | **Per-band** linear map, **absolute** (referenced to digital full scale, not track loudness). `settings.dbfs_scale[band]` = `(min → digit 0, max → digit 9)`, clamped: `digit = clamp(floor((dbfs − min) / (max − min) * 10), 0, 9)`. Calibrated from p5/p95 of a 117-track sample: **L −46→−18, M −23→−7, H −20→−9** (`backend/calibrate.py`). Frozen once tokens are written to the real DB — a recalibration must bump the preset letter (`B` → `C`). |
 | Preset prefix       | `B:` — constant, configurable `PRESET_LETTER`. |
 | Analysis window     | Whole track (RMS over full duration). |
-| Comment merge       | Regex `B:L\dM\dH\d` → replace first match in place; if absent, append after a space. Rest of the comment is preserved. |
+| Token format        | `B:l6m9h7` — uppercase preset prefix, **lowercase** band letters so the digits stand out. |
+| Comment merge       | **Prepend.** Strip every existing `B:l#m#h#` token (matched in either letter case), collapse leftover whitespace, then put the new token at the **front** of the remaining comment (joined by `comment_sep`). `action` = `replaced` if any existed, else `prepended`. |
 
 ---
 
@@ -183,11 +184,11 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 
 | Method | Path                          | Body                          | Returns |
 |--------|-------------------------------|-------------------------------|---------|
-| GET    | `/api/health`                 | –                             | `{ db_path, rekordbox_version, rekordbox_running }` |
-| GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, comment, has_file }]` |
-| GET    | `/api/tracks/{id}`            | –                             | single track |
-| POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, audio_path, sample_rate, bands:[{band,hz_low,hz_high,dbfs,digit}], token, current_comment, proposed_comment }` — **no write** |
-| PUT    | `/api/tracks/{id}/comment`    | `{ token }` **or** `{ comment }` | `{ id, old_comment, new_comment }` — `token` branch calls `merge_token` server-side; both branches enforce Rekordbox-closed + backup + `commit()` |
+| GET    | `/api/health`                 | –                             | `{ db_path, rekordbox_running, track_count, local_track_count }` |
+| GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
+| GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
+| POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[{band,hz_low,hz_high,rms,dbfs,digit}], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
+| PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
 
 - Single shared DB instance opened at startup, closed on shutdown (`lifespan`).
 - CORS allowed for `http://localhost:5173`.
@@ -199,14 +200,16 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 ## Frontend
 
 ### Views
-1. **Track list** — table of Title / Artist / Album / Comment with a client-side
-   search box and a "file present" indicator (analyze disabled when the file can't be
-   found). Backend caps results (e.g. 500) for the POC.
+1. **Track list** — table of Title / Artist / Album / Genre / Comment with a
+   client-side search box. **Only tracks backed by a real local audio file are
+   listed** (`list_tracks` filters on `has_file`); streaming entries and
+   missing/relocated files are excluded. Backend caps results (e.g. 500).
 2. **Analyze panel** (`AnalyzePanel.tsx`) — "Analyze audio" button → spinner → results:
-   - Band table rows: `Low 20–39 Hz | −31.4 dBFS | 4`.
-   - Proposed token `B:L4M7H9` in monospace.
-   - Comment diff (`CommentDiff.tsx`): current comment with the old token struck
-     through / new token highlighted (or the appended token highlighted).
+   - Band table rows: `L | 20–39 Hz | 0.01187 | −35.5 | 3`.
+   - Proposed token `B:l3m9h7` in monospace, plus track length and the analysis
+     sample rate (audio is downsampled to `settings.audio_sr` for the DSP).
+   - Comment diff (`CommentDiff.tsx`): current comment with any existing token
+     struck through / the new prepended token highlighted green.
 3. **Comment editor** (`CommentEditor.tsx`) — `<textarea>` prefilled with the current
    comment for manual edits; Save disabled until changed.
 4. **Confirmation modal** (`ConfirmDialog.tsx`) — on Save:

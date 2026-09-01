@@ -2,10 +2,10 @@
 
 Given an audio file, measure the energy in three log-spaced sub-bands of the
 20-150 Hz range and encode each as a 0-9 digit on a *fixed* dBFS scale,
-producing a token like ``B:L5M7H9``:
+producing a token like ``B:l5m7h9``:
 
     B:      fixed preset prefix (``settings.preset_letter``)
-    L/M/H   Low / Medium / High sub-band
+    l/m/h   Low / Medium / High sub-band (lowercased so the digits stand out)
     digit   0-9, where ``d`` means "d0-d9 % strength"; per band the scale maps
             ``settings.dbfs_scale[band]`` -> (min dBFS -> 0, max dBFS -> 9).
             Absolute (referenced to full scale), so digits are comparable
@@ -19,8 +19,8 @@ Method (see PLAN.md, "Locked-in decisions"):
        track.
     3. RMS -> dBFS (0 dBFS = full-scale sine, AES-17) -> digit.
 
-The dBFS endpoints are deliberately un-tuned here; they get calibrated against
-real material in build step 6.
+The per-band dBFS endpoints in ``settings.dbfs_scale`` were calibrated from a
+117-track sample (see backend/calibrate.py).
 
 CLI::
 
@@ -79,8 +79,8 @@ class AnalysisResult:
 @dataclass
 class MergeResult:
     comment: str  # the new comment text
-    action: str  # "replaced" | "appended"
-    existing_tokens: int  # tokens matched before the edit (>1 => stale dups remain)
+    action: str  # "replaced" (a token was already present) | "prepended"
+    existing_tokens: int  # how many existing tokens were found and removed
 
 
 # ----------------------------------------------------------------------- helpers
@@ -166,7 +166,8 @@ def analyze_samples(y: np.ndarray, fs: int) -> AnalysisResult:
         dbfs = _to_dbfs(rms)
         bands.append(BandResult(label, lo, hi, rms, dbfs, _digit(dbfs, label)))
 
-    token = settings.preset_letter + ":" + "".join(f"{b.band}{b.digit}" for b in bands)
+    # band letters lowercased in the token so the digits stand out: "B:l6m9h7"
+    token = settings.preset_letter + ":" + "".join(f"{b.band.lower()}{b.digit}" for b in bands)
     return AnalysisResult(
         path="",
         sample_rate=fs,
@@ -186,24 +187,26 @@ def analyze_file(path: str, sr: Optional[int] = None) -> AnalysisResult:
 
 # ------------------------------------------------------------------ token merge
 def _token_pattern() -> re.Pattern[str]:
-    return re.compile(re.escape(settings.preset_letter) + r":L\dM\dH\d")
+    # band letters match either case so tokens written before the lowercase
+    # switch are still recognised; the preset letter stays case-sensitive.
+    return re.compile(re.escape(settings.preset_letter) + r":[Ll]\d[Mm]\d[Hh]\d")
 
 
 def merge_token(comment: Optional[str], token: str) -> MergeResult:
-    """Merge ``token`` into ``comment``.
+    """Put ``token`` at the FRONT of ``comment``.
 
-    Replaces the first existing ``<preset>:L#M#H#`` token in place; if none is
-    present, appends ``token`` after ``settings.comment_sep``. The rest of the
-    comment is preserved. ``existing_tokens > 1`` means stale duplicates remain.
+    Every existing ``<preset>:l#m#h#`` token (either letter case) is removed
+    first, then ``token`` is prepended before the remaining text (joined with
+    ``settings.comment_sep``). The rest of the comment is preserved; whitespace
+    left where tokens were removed is collapsed. ``existing_tokens`` is how many
+    were found and removed.
     """
     text = comment or ""
     pat = _token_pattern()
     matches = pat.findall(text)
-    if matches:
-        return MergeResult(pat.sub(token, text, count=1), "replaced", len(matches))
-    if text.strip():
-        return MergeResult(f"{text}{settings.comment_sep}{token}", "appended", 0)
-    return MergeResult(token, "appended", 0)
+    rest = re.sub(r"\s{2,}", " ", pat.sub("", text)).strip()
+    new = f"{token}{settings.comment_sep}{rest}" if rest else token
+    return MergeResult(new, "replaced" if matches else "prepended", len(matches))
 
 
 # -------------------------------------------------------------------------- CLI

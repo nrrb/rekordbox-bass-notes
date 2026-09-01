@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 
-// B:L5M7H9 — any single-letter preset prefix
-const TOKEN_RE = /[A-Z]:L\dM\dH\d/g
+// B:l5m7h9 — any single-letter preset prefix, band letters either case
+const TOKEN_RE = /[A-Za-z]:[Ll]\d[Mm]\d[Hh]\d/g
 
 function highlight(text: string, cls: string): ReactNode {
   if (!text) return <span className="muted">(empty)</span>
@@ -24,7 +24,7 @@ function highlight(text: string, cls: string): ReactNode {
 interface Props {
   current: string
   proposed: string
-  action: 'replaced' | 'appended'
+  action: 'replaced' | 'prepended'
 }
 
 export function CommentDiff({ current, proposed, action }: Props) {

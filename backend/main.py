@@ -88,10 +88,12 @@ def db() -> RekordboxDB:
 
 @app.get("/api/health")
 def health() -> dict:
+    d = db()
     return {
         "db_path": settings.db_path or "(auto-located)",
         "rekordbox_running": rekordbox_running(),
-        "track_count": db().count_tracks(),
+        "track_count": d.count_tracks(),
+        "local_track_count": d.count_local_tracks(),
     }
 
 

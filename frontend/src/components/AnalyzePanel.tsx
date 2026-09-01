@@ -86,9 +86,12 @@ export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
 
           <div className="token-line">
             token <code className="token">{data.token}</code>
-            <span className="muted">
+            <span
+              className="muted"
+              title={`Audio is downsampled to ${data.sample_rate} Hz for analysis (only 20–150 Hz matters)`}
+            >
               {' '}
-              · {data.duration_sec.toFixed(0)}s @ {data.sample_rate} Hz
+              · {data.duration_sec.toFixed(0)}s track · analysed at {data.sample_rate} Hz
             </span>
           </div>
 
@@ -100,7 +103,7 @@ export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
 
           {data.existing_tokens > 1 && (
             <p className="warn">
-              {data.existing_tokens} existing tokens found — only the first is replaced.
+              {data.existing_tokens} existing tokens found — all removed, replaced by one.
             </p>
           )}
 

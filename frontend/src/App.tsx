@@ -37,7 +37,9 @@ export default function App() {
           {health ? (
             <>
               <code>{health.db_path}</code>
-              <span>{health.track_count} tracks</span>
+              <span title={`${health.track_count} total in the library`}>
+                {health.local_track_count} tracks with files
+              </span>
               <span className={health.rekordbox_running ? 'warn' : 'ok'}>
                 Rekordbox {health.rekordbox_running ? 'running' : 'closed'}
               </span>
