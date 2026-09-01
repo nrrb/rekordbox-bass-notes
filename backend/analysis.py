@@ -51,6 +51,13 @@ _DBFS_REF_RMS = 1.0 / math.sqrt(2.0)
 _TINY = 1e-12
 _BAND_LABELS = ("L", "M", "H")
 
+# formats libsndfile can't open; give a specific message rather than "corrupt"
+_NEEDS_FFMPEG = ("m4a", "aac", "mp4", "alac", "m4b", "wma")
+
+
+class AudioDecodeError(RuntimeError):
+    """Could not decode an audio file (unsupported format, corrupt, or missing)."""
+
 
 # --------------------------------------------------------------------------- data
 @dataclass
@@ -136,22 +143,39 @@ def _digit(dbfs: float, band: str) -> int:
 
 
 # ------------------------------------------------------------------------ core
+def _resample_to(y: np.ndarray, sr_from: int, sr_to: int) -> np.ndarray:
+    if sr_from == sr_to:
+        return y
+    g = math.gcd(sr_from, sr_to)
+    return signal.resample_poly(y, sr_to // g, sr_from // g)
+
+
 def load_audio(path: str, sr: Optional[int] = None) -> tuple[np.ndarray, int]:
     """Decode ``path`` to mono float64 at ``sr`` (default ``settings.audio_sr``).
 
-    Note: on Python 3.11-3.12 librosa's ``audioread`` fallback prints a few
-    ``DeprecationWarning`` lines (aifc/audioop/sunau) to stderr on first decode.
-    Harmless and unsuppressable from here (the import path resets warning
-    filters); gone once on Python 3.13+ where those stdlib modules are removed
-    and librosa uses soundfile/ffmpeg directly.
+    Decoding is libsndfile (via ``soundfile``): WAV / AIFF / FLAC / MP3 / OGG and
+    similar. M4A / AAC / ALAC are not supported yet (they need ffmpeg). Resampling
+    to the analysis rate is ``scipy.signal.resample_poly``; on real tracks it
+    matches the previous librosa/soxr path within ~0.01 dB per band.
     """
-    import librosa  # deferred: heavy import (numba warm-up)
+    import soundfile as sf  # deferred: keeps `import backend.analysis` light
 
     target = settings.audio_sr if sr is None else sr
-    y, out_sr = librosa.load(
-        path, sr=target, mono=True, res_type=settings.audio_res_type
-    )
-    return np.asarray(y, dtype=np.float64), int(out_sr)
+    try:
+        data, sr_native = sf.read(path, dtype="float64", always_2d=True)
+    except sf.LibsndfileError as e:
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        if ext in _NEEDS_FFMPEG:
+            raise AudioDecodeError(
+                f"{ext.upper()} files aren't supported yet (they need ffmpeg)."
+            ) from e
+        raise AudioDecodeError(
+            f"could not read {os.path.basename(path)}: {e}"
+        ) from e
+
+    y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
+    y = _resample_to(np.ascontiguousarray(y, dtype=np.float64), int(sr_native), target)
+    return y, target
 
 
 def analyze_samples(y: np.ndarray, fs: int) -> AnalysisResult:

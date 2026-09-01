@@ -60,12 +60,13 @@ select track ──▶ "Analyze audio" ──▶ backend locates file (DjmdConte
 | Layer      | Choice                                   | Why |
 |------------|------------------------------------------|-----|
 | DB access  | `pyrekordbox` (`Rekordbox6Database`)      | Only library (any language) with sync-safe write support: handles the SQLCipher key, ORM over `DjmdContent`, and the `usn` / `rb_local_usn` bump Rekordbox needs on `commit()`. |
-| Audio DSP  | `numpy`, `scipy`, `librosa`, `soundfile` | Band-pass filtering + RMS; `librosa.load` decodes/resamples most formats. |
+| Audio DSP  | `numpy`, `scipy`, `soundfile` | `soundfile`/libsndfile decodes (WAV/AIFF/FLAC/MP3/OGG); `scipy.signal` for `resample_poly` + Butterworth band-pass + RMS. (librosa dropped for packaging — see DISTRIBUTION.md 0.1.) |
 | Backend    | FastAPI + Uvicorn                         | Minimal, typed, proxy-friendly. |
 | Frontend   | React + Vite + TypeScript                 | Fast POC, simple dev proxy. |
 | HTTP       | `fetch` + small hooks                     | No React Query needed for a POC. |
 
-**System dependency:** `ffmpeg` (required by `librosa`/`audioread` for MP3/M4A/AAC).
+**System dependency:** none for the supported formats (libsndfile is bundled in the
+`soundfile` wheel). `ffmpeg` will be added later for M4A/AAC/ALAC.
 
 ### Why `pyrekordbox` and not another language
 
@@ -130,17 +131,18 @@ port just that.
 5. **Safety copy:** `sample/master.db` is the working copy — point `DB_PATH` at it for
    steps 1–5. Keep a second untouched copy. Switch `DB_PATH` to the live DB only after
    the write path is proven (step 6).
-6. **Install `ffmpeg`** (`brew install ffmpeg`) for MP3/M4A/AAC decoding.
+6. **Audio decoding** is `soundfile`/libsndfile (bundled) — no `ffmpeg` needed for
+   WAV/AIFF/FLAC/MP3/OGG; M4A/AAC/ALAC not supported yet.
 
 ---
 
 ## Backend
 
 ### `backend/config.py`
-Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
-`AUDIO_RES_TYPE` (`soxr_hq`), `band_edges_hz` (20/39.15/76.63/150),
-`dbfs_scale` per band via `DBFS_{MIN,MAX}_{L,M,H}` (see Locked-in decisions),
-`PRESET_LETTER` (`B`), `FILTER_ORDER` (8), `COMMENT_SEP` (`" "`), `BACKUP_DIR`.
+Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
+`AUDIO_SR` (500), `band_edges_hz` (20/39.15/76.63/150), `dbfs_scale` per band via
+`DBFS_{MIN,MAX}_{L,M,H}` (see Locked-in decisions), `PRESET_LETTER` (`B`),
+`FILTER_ORDER` (8), `COMMENT_SEP` (`" "`), `BACKUP_DIR`, `BACKUP_KEEP` (20).
 
 ### `backend/db.py` — `pyrekordbox` wrapper
 - `RekordboxDB(db_path=None)` → `Rekordbox6Database`; `.db_path` resolved from the
@@ -176,9 +178,11 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 
 ### `backend/analysis.py` — audio analysis
 - `analyze_file(path) -> AnalysisResult`:
-  - `librosa.load(path, sr=settings.audio_sr, mono=True, res_type=settings.audio_res_type)`
-    — 500 Hz; Nyquist 250 Hz ≫ 150 Hz, and low normalised band edges keep the
-    order-8 Butterworth well-conditioned (max |pole| ~0.98). ~1 s/track warm.
+  - `load_audio`: `soundfile.read` → mono (mean of channels) →
+    `scipy.signal.resample_poly` to `settings.audio_sr` (500 Hz; Nyquist 250 ≫ 150,
+    keeps the order-8 Butterworth well-conditioned, max |pole| ~0.98). Matches the
+    old librosa/soxr path within ~0.01 dB per band on real tracks. Unsupported /
+    corrupt files raise `AudioDecodeError`. ~0.8 s/track.
   - For each band `[lo, hi]`:
     `sos = scipy.signal.butter(settings.filter_order, [lo/nyq, hi/nyq], 'band', output='sos')`
     (with a stability guard rejecting max |pole| ≥ 0.999)
@@ -262,7 +266,7 @@ writertest/
 ├── .gitignore
 ├── backend/
 │   ├── requirements.txt       # fastapi, uvicorn, pyrekordbox, sqlcipher3-wheels,
-│   │                          #   psutil, numpy, scipy, librosa, soundfile
+│   │                          #   psutil, numpy, scipy, soundfile
 │   ├── config.py              # env-configurable params
 │   ├── db.py                  # pyrekordbox wrapper: reads, backup(), set_comment()
 │   ├── analysis.py            # decode + band-pass + dBFS + token + merge (+ CLI)
@@ -325,8 +329,7 @@ the core loop is analyse → confirm → save; add it later if wanted.)_
    only if re-tuning. Point `REKORDBOX_DB_PATH` at the real `master.db`, quit Rekordbox,
    do one real edit, reopen Rekordbox, verify the comment shows on the track. Record the
    frozen `dbfs_scale` in the README.
-7. **README** — quit Rekordbox · activate `.venv` · `brew install ffmpeg` ·
-   run `uvicorn` + `npm run dev`.
+7. **README** — quit Rekordbox · activate `.venv` · run `uvicorn` + `npm run dev`.
 
 ---
 
@@ -394,7 +397,8 @@ independently and isn't detected (pause it during use).
   level, so two masters of the same track at different loudness score differently. If
   loudness-normalized digits are preferred, normalize to −14 LUFS before filtering
   (one-line change, add after calibration).
-- **`ffmpeg` dependency** for lossy formats; AAC/M4A low-end varies by encoder, MP3
+- **Format coverage** — libsndfile handles WAV/AIFF/FLAC/MP3/OGG; **M4A/AAC/ALAC
+  raise `AudioDecodeError`** until `ffmpeg` is bundled (DISTRIBUTION.md M4). MP3
   sub-bass is usually intact.
 - **Relocated / missing files** (external drives, cloud) — surfaced as `has_file: false`,
   analyze disabled.

@@ -46,8 +46,10 @@ modern masters; that's the real distribution, not a bug.
 - macOS (paths below assume it)
 - Python 3.11 (repo ships a `.venv`)
 - Node 22+
-- `ffmpeg` — `brew install ffmpeg` (librosa needs it to decode MP3/M4A/AAC)
 - Rekordbox **fully quit** whenever the app writes
+
+Audio decoding is `soundfile` / libsndfile — WAV, AIFF, FLAC, MP3, OGG. M4A /
+AAC / ALAC aren't supported yet (they need `ffmpeg`, planned).
 
 ---
 
@@ -56,7 +58,6 @@ modern masters; that's the real distribution, not a bug.
 ```sh
 # backend (the .venv already exists in this repo)
 .venv/bin/pip install -r backend/requirements.txt
-brew install ffmpeg
 
 # frontend
 cd frontend && npm install
@@ -106,7 +107,6 @@ All via environment variables; defaults live in `backend/config.py`.
 | `RESULT_LIMIT` | `500` | Max tracks returned by `/api/tracks`. |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS allow-origin. |
 | `AUDIO_SR` | `500` | Hz the audio is resampled to for the DSP (only 20–150 Hz matters). |
-| `AUDIO_RES_TYPE` | `soxr_hq` | librosa resampler. |
 | `FILTER_ORDER` | `8` | Butterworth band-pass order. |
 | `PRESET_LETTER` | `B` | Token prefix. |
 | `COMMENT_SEP` | `" "` | Separator between the token and the rest of the comment. |
