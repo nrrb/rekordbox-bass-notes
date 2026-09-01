@@ -32,6 +32,28 @@ export interface CommentUpdateResult {
   backup_path: string
 }
 
+export interface BatchAnalyzeItem {
+  id: string
+  index: number
+  total: number
+  ok: boolean
+  error?: string
+  title?: string
+  artist?: string
+  token?: string
+  bands?: BandResult[]
+  current_comment?: string
+  proposed_comment?: string
+  merge_action?: 'replaced' | 'prepended'
+  existing_tokens?: number
+}
+
+export interface BatchCommentResult {
+  backup_path: string
+  count: number
+  results: { id: string; old_comment: string; new_comment: string }[]
+}
+
 export interface AnalyzeResponse {
   id: string
   title: string

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { fetchHealth } from './api'
 import { AnalyzePanel } from './components/AnalyzePanel'
+import { BatchPanel } from './components/BatchPanel'
 import { TrackTable } from './components/TrackTable'
 import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
@@ -10,7 +11,7 @@ export default function App() {
   const { tracks, loading, error, refetch } = useTracks()
   const [health, setHealth] = useState<Health | null>(null)
   const [search, setSearch] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     fetchHealth().then(setHealth).catch(() => setHealth(null))
@@ -24,10 +25,32 @@ export default function App() {
     )
   }, [tracks, search])
 
-  const selected = useMemo(
-    () => tracks.find((t) => t.id === selectedId) ?? null,
-    [tracks, selectedId],
+  const toggle = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const shownIds = filtered.map((t) => t.id)
+      const allSelected = shownIds.every((id) => prev.has(id))
+      const next = new Set(prev)
+      shownIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)))
+      return next
+    })
+  }, [filtered])
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), [])
+
+  const selectedTracks = useMemo(
+    () => tracks.filter((t) => selectedIds.has(t.id)),
+    [tracks, selectedIds],
   )
+
+  const rekordboxRunning = health?.rekordbox_running ?? false
 
   return (
     <div className="app">
@@ -62,21 +85,36 @@ export default function App() {
         </button>
         <span className="muted">
           {filtered.length} shown{search ? ` / ${tracks.length} loaded` : ''}
+          {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
         </span>
       </div>
 
       {error && <p className="error">Failed to load tracks: {error}</p>}
 
       {!error && (
-        <TrackTable tracks={filtered} selectedId={selectedId} onSelect={setSelectedId} />
+        <TrackTable
+          tracks={filtered}
+          selectedIds={selectedIds}
+          onToggle={toggle}
+          onToggleAll={toggleAll}
+        />
       )}
 
-      {selected && (
+      {selectedTracks.length === 1 && (
         <AnalyzePanel
-          key={selected.id}
-          track={selected}
-          rekordboxRunning={health?.rekordbox_running ?? false}
+          key={selectedTracks[0].id}
+          track={selectedTracks[0]}
+          rekordboxRunning={rekordboxRunning}
           onSaved={refetch}
+        />
+      )}
+
+      {selectedTracks.length >= 2 && (
+        <BatchPanel
+          tracks={selectedTracks}
+          rekordboxRunning={rekordboxRunning}
+          onSaved={refetch}
+          onClear={clearSelection}
         />
       )}
     </div>

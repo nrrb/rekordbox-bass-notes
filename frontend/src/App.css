@@ -352,3 +352,67 @@ mark.tok-new {
   border: 1px solid var(--border);
   color: var(--text);
 }
+
+/* --- multi-select + batch --- */
+.check-col {
+  width: 28px;
+  text-align: center;
+  padding-right: 0 !important;
+}
+.check-col input {
+  cursor: pointer;
+}
+
+button.linklike {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+table.batch {
+  width: 100%;
+  margin: 8px 0 12px;
+  font-size: 13px;
+}
+table.batch th {
+  position: static;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  padding: 4px 12px 4px 0;
+}
+table.batch td {
+  padding: 5px 12px 5px 0;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.modal-wide {
+  width: min(680px, 92vw);
+}
+.batch-confirm-list {
+  max-height: 45vh;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  margin: 6px 0;
+}
+.batch-confirm-row {
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.batch-confirm-row:last-child {
+  border-bottom: none;
+}
+.batch-confirm-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}

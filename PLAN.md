@@ -206,8 +206,10 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 | GET    | `/api/health`                 | –                             | `{ db_path, rekordbox_running, track_count, local_track_count }` |
 | GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
 | GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
-| POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[{band,hz_low,hz_high,rms,dbfs,digit}], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
+| POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[…], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
+| POST   | `/api/tracks/analyze`         | `{ ids: [...] }`              | **NDJSON stream**, one line per track: `{id, index, total, ok, …}` (ok adds token/bands/proposed_comment/…; not-ok adds `error`). No write. |
 | PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
+| PUT    | `/api/tracks/comments`        | `{ items: [{id, token\|comment}] }` | `{ backup_path, count, results:[{id, old_comment, new_comment}] }` — **atomic**: one backup, one `commit()`, one `quick_check`; any unknown id → 404, nothing written; dup ids → 422 |
 
 - Single shared DB instance opened at startup, closed on shutdown (`lifespan`).
 - CORS allowed for `http://localhost:5173`.
@@ -219,31 +221,31 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 ## Frontend
 
 ### Views
-1. **Track list** — table of Title / Artist / Album / Genre / Comment with a
-   client-side search box. **Only tracks backed by a real local audio file are
-   listed** (`list_tracks` filters on `has_file`); streaming entries and
-   missing/relocated files are excluded. Backend caps results (e.g. 500).
-2. **Analyze panel** (`AnalyzePanel.tsx`) — "Analyze audio" button → spinner → results:
-   - Band table rows: `L | 20–39 Hz | 0.01187 | −35.5 | 3`.
-   - Proposed token `B:l3m9h7` in monospace, plus track length and the analysis
-     sample rate (audio is downsampled to `settings.audio_sr` for the DSP).
-   - Comment diff (`CommentDiff.tsx`): current comment with any existing token
-     struck through / the new prepended token highlighted green.
-3. **Comment editor** (`CommentEditor.tsx`) — `<textarea>` prefilled with the current
-   comment for manual edits; Save disabled until changed.
-4. **Confirmation modal** (`ConfirmDialog.tsx`) — on Save:
-   > Update comment for **{title} — {artist}**?
-   > Old: "{old}"
-   > New: "{new}"
-   > `[Cancel] [Confirm & Save]`
-5. **Result toast** — success shows old→new; failure surfaces the backend message
-   (especially "quit Rekordbox and retry").
+1. **Track list** (`TrackTable.tsx`) — Title / Artist / Album / Genre / Comment with a
+   client-side search box and a **checkbox per row** (row click also toggles) plus a
+   select-all-shown header box. **Only tracks with a real local audio file are listed**
+   (`list_tracks` filters on `has_file`). Backend caps results (e.g. 500).
+2. **Single panel** (`AnalyzePanel.tsx`) — shown when exactly 1 row is selected.
+   "Analyze audio" → band table (`L | 20–39 Hz | 0.01187 | −35.5 | 3`), proposed token
+   `B:l3m9h7`, `CommentDiff.tsx` (existing token struck / new prepended token green),
+   "Save to Rekordbox" → `ConfirmDialog.tsx` (old → new) → `PUT /…/comment`.
+3. **Batch panel** (`BatchPanel.tsx`) — shown when ≥2 rows selected. "Analyze N" →
+   consumes the NDJSON stream, showing `Analyzing done/total…` and a per-track results
+   table (token + `current → proposed`, or "no change", or an error). "Save M to
+   Rekordbox" (M = tracks whose comment actually changes) → `BatchConfirmDialog.tsx`
+   (scrollable list of every change) → `PUT /api/tracks/comments` (one atomic write) →
+   "Saved M … Backup: …".
+4. Save buttons disable while Rekordbox is running; every write path shows the backend
+   error (esp. "quit Rekordbox"). On success the panels call `refetch` so the table's
+   Comment column updates.
 
 ### State
-- `useTracks()` — fetch list, expose `refetch`.
-- `useAnalyze(id)` — `POST /analyze`, returns bands + token + proposed comment.
-- `useUpdateComment()` — `PUT`, on success patches the local list row and pops the toast.
-- No global store; component state + hooks.
+- `useTracks()` — list + `refetch`.
+- `useAnalyze()` / `useUpdateComment()` — single analyse / write.
+- `useBatchAnalyze()` — POSTs `ids`, iterates the NDJSON stream into a `Map<id, item>`
+  with `{done,total}` progress and an `AbortController`.
+- `useBatchUpdate()` — `PUT /api/tracks/comments`.
+- Selection: `selectedIds: Set<string>` in `App`. No global store.
 
 ### Dev proxy
 `vite.config.ts` proxies `/api` → `http://localhost:8000`.
@@ -277,13 +279,13 @@ writertest/
         ├── types.ts
         ├── hooks/
         │   ├── useTracks.ts
-        │   ├── useAnalyze.ts
-        │   └── useUpdateComment.ts
+        │   ├── useAnalyze.ts        useUpdateComment.ts
+        │   └── useBatchAnalyze.ts   useBatchUpdate.ts
         └── components/
             ├── TrackTable.tsx
-            ├── AnalyzePanel.tsx
-            ├── CommentDiff.tsx
-            └── ConfirmDialog.tsx
+            ├── AnalyzePanel.tsx     ConfirmDialog.tsx
+            ├── BatchPanel.tsx       BatchConfirmDialog.tsx
+            └── CommentDiff.tsx
 ```
 
 _(No `CommentEditor.tsx` — free-text comment editing was in the original sketch but

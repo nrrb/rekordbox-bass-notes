@@ -77,11 +77,16 @@ cd frontend && npm run dev
 Open <http://localhost:5173>.
 
 1. The list shows **only tracks with a local audio file** (streaming and
-   missing/relocated files are hidden).
-2. Select a track → **Analyze audio** → band table, the `B:l#m#h#` token, and a
-   preview of the new comment.
-3. **Save to Rekordbox** → confirm dialog (old → new) → write. The button is
-   disabled while Rekordbox is running.
+   missing/relocated files are hidden). Check rows (or click them) to select;
+   the header checkbox selects everything shown.
+2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
+   token, a preview of the new comment → **Save to Rekordbox** → confirm
+   dialog (old → new) → write.
+3. **Two or more selected** → **Analyze N** → a progress count and a per-track
+   result table → **Save M to Rekordbox** (M = tracks whose comment actually
+   changes) → confirm dialog listing every change → one atomic write, one
+   backup.
+4. Save is disabled while Rekordbox is running.
 
 By default everything points at **`sample/master.db`**, a copy — not your live
 library. See *Going live* below.
@@ -188,8 +193,10 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 | `GET` | `/api/health` | `{ db_path, rekordbox_running, track_count, local_track_count }` |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
-| `POST` | `/api/tracks/{id}/analyze` | Analyse + proposed comment. **No write.** 404 / 422 (no local file) / 500 |
-| `PUT` | `/api/tracks/{id}/comment` | Body: `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
+| `POST` | `/api/tracks/{id}/analyze` | Analyse one track + proposed comment. **No write.** 404 / 422 (no local file) / 500 |
+| `POST` | `/api/tracks/analyze` | Body `{"ids": [...]}`. Analyse many; response is an **NDJSON stream**, one line per track as it finishes. **No write.** |
+| `PUT` | `/api/tracks/{id}/comment` | Body `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
+| `PUT` | `/api/tracks/comments` | Body `{"items": [{"id", "token"\|"comment"}]}`. Writes all in **one transaction with one backup**. Any unknown id rejects the whole batch (nothing written); duplicate ids → 422 |
 
 ---
 

@@ -1,4 +1,11 @@
-import type { AnalyzeResponse, CommentUpdateResult, Health, Track } from './types'
+import type {
+  AnalyzeResponse,
+  BatchAnalyzeItem,
+  BatchCommentResult,
+  CommentUpdateResult,
+  Health,
+  Track,
+} from './types'
 
 async function getJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -46,5 +53,46 @@ export function updateComment(
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+  })
+}
+
+/** Batch analyse; yields one record per track as the NDJSON stream arrives. */
+export async function* analyzeTracksStream(
+  ids: string[],
+  signal?: AbortSignal,
+): AsyncGenerator<BatchAnalyzeItem> {
+  const res = await fetch('/api/tracks/analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+    signal,
+  })
+  if (!res.ok || !res.body) throw new Error(`${res.status} ${res.statusText}`)
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buf += decoder.decode(value, { stream: true })
+    let nl: number
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim()
+      buf = buf.slice(nl + 1)
+      if (line) yield JSON.parse(line) as BatchAnalyzeItem
+    }
+  }
+  const tail = buf.trim()
+  if (tail) yield JSON.parse(tail) as BatchAnalyzeItem
+}
+
+/** Writes many comments in one atomic transaction. */
+export function updateComments(
+  items: ({ id: string; token: string } | { id: string; comment: string })[],
+): Promise<BatchCommentResult> {
+  return getJSON<BatchCommentResult>('/api/tracks/comments', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items }),
   })
 }
