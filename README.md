@@ -234,6 +234,7 @@ backend/
   backups/        auto-written backups (gitignored)
 frontend/src/
   App.tsx, api.ts, types.ts
+  bassToken.ts       l/m/h band edges + parse digits out of a "B:l#m#h#" token
   analysisCache.tsx  results kept per track id for the current library
   player.tsx         one <audio> + Web Audio AnalyserNode (Context)
   hooks/          useHealth (5 s poll), useTracks, useBackups,

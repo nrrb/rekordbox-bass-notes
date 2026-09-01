@@ -253,6 +253,26 @@ tbody tr.selected {
   word-break: break-word;
 }
 
+thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+thead th.sortable:hover {
+  background: rgba(110, 168, 254, 0.12);
+}
+thead th.sortable.sorted {
+  color: var(--accent);
+}
+.sort-arrow {
+  font-size: 10px;
+}
+
+.num-col {
+  text-align: center;
+  width: 34px;
+  font-variant-numeric: tabular-nums;
+}
+
 .center {
   text-align: center;
 }
