@@ -4,8 +4,6 @@ __pycache__/
 *.pyc
 *.egg-info/
 
-# local copy of the Rekordbox library (large, private)
-sample/
 
 # auto-written master.db backups
 backend/backups/

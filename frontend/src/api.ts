@@ -26,12 +26,14 @@ export function fetchHealth(): Promise<Health> {
   return getJSON<Health>('/api/health')
 }
 
-/** Reopen the backend against a different master.db at runtime. Returns fresh health. */
-export function switchDb(target: 'live' | 'sample'): Promise<Health> {
+/** Reopen the backend against a different database at runtime (persisted). Returns fresh health. */
+export function switchDb(
+  body: { target: 'live' } | { target: 'custom'; path: string },
+): Promise<Health> {
   return getJSON<Health>('/api/db/switch', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ target }),
+    body: JSON.stringify(body),
   })
 }
 

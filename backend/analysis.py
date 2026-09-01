@@ -20,7 +20,7 @@ Method (see PLAN.md, "Locked-in decisions"):
     3. RMS -> dBFS (0 dBFS = full-scale sine, AES-17) -> digit.
 
 The per-band dBFS endpoints in ``settings.dbfs_scale`` were calibrated from a
-117-track sample (see backend/calibrate.py).
+sample of ~117 local tracks (see backend/calibrate.py).
 
 CLI::
 

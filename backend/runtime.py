@@ -9,7 +9,8 @@ Persisted to JSON:
   - dev:        ``<repo>/.rkbx-config.json``  (gitignored)
 
 Precedence for each field: environment variable > config.json > built-in default.
-Dev built-ins are unchanged from before (sample DB, ``backend/backups/``).
+The built-in default database is the real Rekordbox library, auto-located by
+pyrekordbox (represented here as an empty string).
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import SAMPLE_DB_PATH, _REPO_ROOT, _b
+from .config import _REPO_ROOT, _b
 
 APP_NAME = "RekordboxTagger"
 _FROZEN = bool(getattr(sys, "frozen", False))
@@ -38,9 +39,8 @@ def config_path() -> Path:
 
 
 def _default_db_path() -> str:
-    # frozen build with no config yet -> auto-locate the live library ("" does that);
-    # dev -> the bundled sample copy.
-    return "" if _FROZEN else SAMPLE_DB_PATH
+    # "" -> pyrekordbox auto-locates the real Rekordbox library.
+    return ""
 
 
 def _default_backup_dir() -> str:

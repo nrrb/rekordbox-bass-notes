@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-SAMPLE_DB_PATH = str(_REPO_ROOT / "sample" / "master.db")
 
 
 def _s(key: str, default: str) -> str:
@@ -36,20 +35,9 @@ def _b(key: str, default: bool = False) -> bool:
     return default if v is None else v.strip().lower() in ("1", "true", "yes", "on")
 
 
-def _resolve_db_path() -> str:
-    """Empty string => pyrekordbox auto-locates the live library."""
-    if _b("USE_LIVE_LIBRARY"):
-        return ""
-    return _s("REKORDBOX_DB_PATH", SAMPLE_DB_PATH)
-
-
 @dataclass(frozen=True)
 class Settings:
-    # --- database ---
-    # Path to master.db (the file or its parent dir). Defaults to the bundled
-    # sample copy. `REKORDBOX_DB_PATH=""` or `USE_LIVE_LIBRARY=1` => pyrekordbox
-    # auto-locates the live library.
-    db_path: str = field(default_factory=_resolve_db_path)
+    # The database path is user-settable and lives in runtime.py, not here.
     result_limit: int = field(default_factory=lambda: _i("RESULT_LIMIT", 500))
 
     # --- CORS ---
@@ -67,8 +55,8 @@ class Settings:
     # dBFS -> digit endpoints, per band: min -> digit 0, max -> digit 9 (linear).
     # ABSOLUTE scale -- referenced to digital full scale, not track loudness --
     # so a given dBFS always yields the same digit, comparable across any tracks
-    # (present or future). Values calibrated from the p5/p95 of a 117-track
-    # sample; see backend/calibrate.py. Freeze once tokens are written to the
+    # (present or future). Values calibrated from the p5/p95 of ~117 local
+    # tracks; see backend/calibrate.py. Freeze once tokens are written to the
     # real DB; a later recalibration must bump preset_letter (B -> C) so mixed
     # vintages stay distinguishable.
     dbfs_scale: dict[str, tuple[float, float]] = field(

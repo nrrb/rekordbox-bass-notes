@@ -96,7 +96,7 @@ port just that.
 |---------------------|-------|
 | Band edges          | **Log-spaced thirds of 20–150 Hz** → 20.0 / 39.1 / 76.6 / 150.0 Hz (displayed rounded: 20 / 39 / 77 / 150). Configurable. |
 | Per-band metric     | Zero-phase Butterworth band-pass (order 8, SOS) → **RMS in dBFS** (0 dBFS = full-scale). |
-| dBFS → digit        | **Per-band** linear map, **absolute** (referenced to digital full scale, not track loudness). `settings.dbfs_scale[band]` = `(min → digit 0, max → digit 9)`, clamped: `digit = clamp(floor((dbfs − min) / (max − min) * 10), 0, 9)`. Calibrated from p5/p95 of a 117-track sample: **L −46→−18, M −23→−7, H −20→−9** (`backend/calibrate.py`). Frozen once tokens are written to the real DB — a recalibration must bump the preset letter (`B` → `C`). |
+| dBFS → digit        | **Per-band** linear map, **absolute** (referenced to digital full scale, not track loudness). `settings.dbfs_scale[band]` = `(min → digit 0, max → digit 9)`, clamped: `digit = clamp(floor((dbfs − min) / (max − min) * 10), 0, 9)`. Calibrated from p5/p95 of a sample of ~117 local tracks: **L −46→−18, M −23→−7, H −20→−9** (`backend/calibrate.py`). Frozen once tokens are written to the real DB — a recalibration must bump the preset letter (`B` → `C`). |
 | Preset prefix       | `B:` — constant, configurable `PRESET_LETTER`. |
 | Analysis window     | Whole track (RMS over full duration). |
 | Token format        | `B:l6m9h7` — uppercase preset prefix, **lowercase** band letters so the digits stand out. |
@@ -106,10 +106,10 @@ port just that.
 
 ## Prerequisites (one-time)
 
-**Already set up in this repo** (verified 2026-09-01): `.venv/` (Python 3.11) with
-`pyrekordbox 0.4.4`, `sqlcipher3-wheels 0.5.7`, `SQLAlchemy 2.0.52`; and
-`sample/master.db`, a copy of the live database. Confirmed working:
-`Rekordbox6Database("sample/master.db")` opens and reads 26 content rows + comments.
+**Already set up in this repo**: `.venv/` (Python 3.11) with `pyrekordbox 0.4.4`,
+`sqlcipher3-wheels 0.5.7`, `SQLAlchemy 2.0.52`. The app opens your real Rekordbox
+library by default (auto-located). _(Early development used a `sample/master.db`
+copy; that has since been removed — see the note under Build order.)_
 
 1. **Python env:** use `.venv` (`.venv/bin/python`, `.venv/bin/pip`). Core deps:
    `pip install pyrekordbox sqlcipher3-wheels`. `pyrekordbox` needs an SQLCipher
@@ -118,20 +118,16 @@ port just that.
    `python -m pyrekordbox install-sqlcipher` (clones into `./.tmp/`; a trailing
    `Could not remove temporary directory '.tmp'` is harmless — `rm -rf .tmp` after).
 2. **Database key:** no manual step. `pyrekordbox 0.4.4` resolves the Rekordbox 6/7
-   key automatically (confirmed against `sample/master.db`). This version has **no**
-   `download-key` subcommand — `python -m pyrekordbox --help` shows only
-   `install-sqlcipher`. If opening the *live* DB ever raises a key/decrypt error,
-   upgrade `pyrekordbox` or pass `key=...` explicitly to `Rekordbox6Database`.
+   key automatically. This version has **no** `download-key` subcommand —
+   `python -m pyrekordbox --help` shows only `install-sqlcipher`. If opening a DB
+   ever raises a key/decrypt error, upgrade `pyrekordbox` or pass `key=...`.
 3. **Quit Rekordbox fully** whenever the backend writes — the DB is otherwise locked;
    the write fails or leaves inconsistent state. The backend enforces this (409).
 4. **Rekordbox version:** `pyrekordbox` auto-locates `master.db` for v6
-   (`~/Library/Pioneer/rekordbox/`) or v7 (`rekordbox7`). `/api/health` reports which
-   DB was opened. The `No masterPlaylists6.xml found` warning when opening a bare
-   copied `.db` is benign (playlist XML not copied alongside).
-5. **Safety copy:** `sample/master.db` is the working copy — point `DB_PATH` at it for
-   steps 1–5. Keep a second untouched copy. Switch `DB_PATH` to the live DB only after
-   the write path is proven (step 6).
-6. **Audio decoding** is `soundfile`/libsndfile (bundled) — no `ffmpeg` needed for
+   (`~/Library/Pioneer/rekordbox/`) or v7 (`rekordbox7`). `/api/health` reports the
+   resolved path. To use a different `master.db`, browse to it in the header (or set
+   `REKORDBOX_DB_PATH`).
+5. **Audio decoding** is `soundfile`/libsndfile (bundled) — no `ffmpeg` needed for
    WAV/AIFF/FLAC/MP3/OGG; M4A/AAC/ALAC not supported yet.
 
 ---
@@ -207,14 +203,14 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 
 | Method | Path                          | Body                          | Returns |
 |--------|-------------------------------|-------------------------------|---------|
-| GET    | `/api/health`                 | –                             | `{ db_path, db_kind (live|sample|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
+| GET    | `/api/health`                 | –                             | `{ db_path, db_kind (live|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
 | GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
 | GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
 | POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[…], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
 | POST   | `/api/tracks/analyze`         | `{ ids: [...] }`              | **NDJSON stream**, one line per track: `{id, index, total, ok, …}` (ok adds token/bands/proposed_comment/…; not-ok adds `error`). No write. |
 | PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
 | PUT    | `/api/tracks/comments`        | `{ items: [{id, token\|comment}] }` | `{ backup_path, count, results:[{id, old_comment, new_comment}] }` — **atomic**: one backup, one `commit()`, one `quick_check`; any unknown id → 404, nothing written; dup ids → 422 |
-| POST   | `/api/db/switch`              | `{ target: "live"\|"sample"\|"custom", path? }` | Reopen the shared `RekordboxDB` at runtime **and persist to `config.json`** (sticky across restart). Returns fresh `/api/health`. |
+| POST   | `/api/db/switch`              | `{ target: "live" }` or `{ target: "custom", path }` | Reopen the shared `RekordboxDB` (auto-locate, or a chosen `master.db`) **and persist to `config.json`**. Returns fresh `/api/health`. |
 | GET    | `/api/backups`               | –                              | `{ backup_dir, live:{db_path,usn,track_count,tagged_count}, backups:[{name,taken,size,wal_size,shm_size,usn,track_count,tagged_count,recent,is_prerestore,error}] }` |
 | POST   | `/api/backups/{name}/restore`| –                              | Guarded (409 if Rekordbox open) → snapshot current DB → `apply_restore` → reopen. Returns `{restored_from, prerestore_snapshot, …health}`. |
 
@@ -307,6 +303,11 @@ the core loop is analyse → confirm → save; add it later if wanted.)_
 ---
 
 ## Build order
+
+> _Steps 1–5 were developed and tested against a `sample/master.db` — a copy of the
+> library. That copy was removed once the write path was proven; the app now
+> defaults to the real library (auto-located), with a "use a different database…"
+> control for a copy elsewhere. Historical references below are left as-is._
 
 1. **Backend read-only** — scaffold FastAPI, `open_db()`, `GET /api/tracks` +
    `/api/health`. Verify against a **copy** of `master.db`; confirm titles / artists /

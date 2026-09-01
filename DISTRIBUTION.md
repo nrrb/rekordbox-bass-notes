@@ -19,8 +19,8 @@ endpoints added now.
 
 | # | Item | Touches | Status |
 |---|------|---------|--------|
-| 0.1 | **Drop librosa** → `soundfile` decode + `scipy.signal.resample_poly` to `AUDIO_SR`. Removed `audio_res_type`. Re-ran `calibrate.py`: 1 track of 117 shifts one digit in each band (boundary rounding) → **`dbfs_scale` unchanged, `PRESET_LETTER=B`**. `AudioDecodeError` for unsupported/corrupt; M4A/AAC/ALAC → "not supported yet". audioread `DeprecationWarning` noise gone. | `analysis.py`, `config.py`, `requirements.txt` | ✅ |
-| 0.2 | **Runtime config** — `backend/runtime.py`: `RuntimeConfig {db_path, backup_dir}` persisted to JSON (`~/Library/Application Support/RekordboxTagger/config.json` frozen, `./.rkbx-config.json` gitignored in dev). Precedence env → file → default. `/api/db/switch` writes it (sticky across restart — verified). `db.backup()` / `_prune_backups` / `restore.py` read `backup_dir` from it. Dev defaults unchanged. | `runtime.py` (new), `db.py`, `restore.py`, `main.py` | ✅ |
+| 0.1 | **Drop librosa** → `soundfile` decode + `scipy.signal.resample_poly` to `AUDIO_SR`. Removed `audio_res_type`. Re-ran `calibrate.py`: 1 of ~117 tracks shifts one digit at a boundary → **`dbfs_scale` unchanged, `PRESET_LETTER=B`**. `AudioDecodeError` for unsupported/corrupt; M4A/AAC/ALAC → "not supported yet". audioread `DeprecationWarning` noise gone. | `analysis.py`, `config.py`, `requirements.txt` | ✅ |
+| 0.2 | **Runtime config** — `backend/runtime.py`: `RuntimeConfig {db_path, backup_dir}` persisted to JSON (`~/Library/Application Support/RekordboxTagger/config.json` frozen, `./.rkbx-config.json` gitignored in dev). Precedence env → file → default; **default db_path = "" (auto-locate the real library)**. `/api/db/switch` writes it (sticky across restart — verified). `db.backup()` / `_prune_backups` / `restore.py` read `backup_dir` from it. | `runtime.py` (new), `db.py`, `restore.py`, `main.py` | ✅ |
 | 0.3 | **Human error messages** — `humanize()` / `_http()` in `main.py`: library-not-found, Rekordbox open, audio moved, decode/format failure, unsupported-DB-version → plain sentences in `detail`, applied to the analyze / batch-stream / write / switch paths. No UI change. Verified. | `main.py` | ✅ |
 | 0.4 | **Backup endpoints** — `GET /api/backups` (listing + `RekordboxDB.stats()` for the live DB) and `POST /api/backups/{name}/restore` (409 if Rekordbox open → snapshot → `restore.apply_restore` → reopen, behind `_swap_lock`). `restore.py` refactored: `resolve_backup()` (raises, no `SystemExit`) + `apply_restore()` shared with the CLI. Full HTTP round-trip not run (Rekordbox was open — guard verified; mechanics covered by the CLI). Restore **panel** is UI work. | `main.py`, `restore.py`, `db.py` | ✅ |
 | 0.5 | **Additive static mount** — `app.mount("/", StaticFiles(frontend/dist, html=True))` last, only when `frontend/dist/index.html` exists (`sys._MEIPASS`-aware). Verified: skipped in dev; serves the SPA at `/` with `/api/*` still winning when a build is present. **`npm run dev` unaffected.** | `main.py` | ✅ |
@@ -115,12 +115,13 @@ move writable state out.
 
 ### 5. First-run library setup
 
-- On launch with no `config.json`: call `detect_library_path()`, show
-  *"Found your Rekordbox library at `<path>` — use it?"* with **Change…** (native
-  file picker) and a "not found" path.
+- The app already auto-locates the library (`detect_library_path()`); no sample
+  DB. On launch when nothing resolves, show a *"Couldn't find your Rekordbox
+  library — locate master.db"* screen instead of a stack trace.
 - Handle Rekordbox 5 / 6 / 7 directory variants and "file missing."
-- The existing `DbSwitcher` "sample vs live" control becomes **"Change library…"**
-  (there is no sample in a shipped build).
+- `DbSwitcher` already offers **"use a different database…"** (a path field in
+  dev); in the packaged app wire that button to a **native file dialog**
+  (`window.create_file_dialog()` via pywebview).
 
 ### 6. Restore in the UI
 

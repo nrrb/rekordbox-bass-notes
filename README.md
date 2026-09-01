@@ -89,8 +89,10 @@ Open <http://localhost:5173>.
    backup.
 4. Save is disabled while Rekordbox is running.
 
-By default everything points at **`sample/master.db`**, a copy — not your live
-library. See *Going live* below.
+It opens **your real Rekordbox library** (auto-located) by default. The header
+shows which database is active (**MY LIBRARY** / **CUSTOM DATABASE**); use
+**use a different database…** there to point at another `master.db`. Quit
+Rekordbox before saving.
 
 ---
 
@@ -103,8 +105,8 @@ variable → `config.json` → default. Everything else is env-only; defaults li
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `REKORDBOX_DB_PATH` | `sample/master.db` | Path to `master.db` (file or its dir). Set to `""` to let `pyrekordbox` auto-locate the live library. |
-| `USE_LIVE_LIBRARY` | _(unset)_ | `1` / `true` — shorthand for "auto-locate the live library" (overrides `REKORDBOX_DB_PATH`). |
+| `REKORDBOX_DB_PATH` | _(auto-locate)_ | Path to a specific `master.db` (file or its dir). Unset ⇒ `pyrekordbox` finds your Rekordbox library. Overrides `config.json`. |
+| `USE_LIVE_LIBRARY` | _(unset)_ | `1` / `true` — ignore any saved/`REKORDBOX_DB_PATH` value and force auto-locate. |
 | `BACKUP_DIR` | `backend/backups/` | Where write backups go. |
 | `BACKUP_KEEP` | `20` | Max backup sets kept; older ones pruned after each write. `0` = keep all. |
 | `RESULT_LIMIT` | `500` | Max tracks returned by `/api/tracks`. |
@@ -118,7 +120,7 @@ variable → `config.json` → default. Everything else is env-only; defaults li
 | `DBFS_MIN_H` / `DBFS_MAX_H` | `-20` / `-9` | High-band digit window. |
 
 > The per-band dBFS windows above are the **frozen, calibrated values** (from a
-> 117-track sample; see `backend/calibrate.py`). Changing them makes new tokens
+> sample of ~117 local tracks; see `backend/calibrate.py`). Changing them makes new tokens
 > inconsistent with ones already written — if you must, also bump `PRESET_LETTER`.
 
 ---
@@ -161,20 +163,19 @@ reversible), then copies the chosen backup over `master.db` and clears the live
 
 ---
 
-## Going live (against your real library)
+## First real write
+
+The app already points at your Rekordbox library. Before the first save:
 
 1. **Quit Rekordbox** completely. Pause Rekordbox cloud/library sync if you use it.
-2. Point at the real library — either:
-   - **In the UI:** click **switch to live library** in the header, confirm. The
-     header badge turns **LIVE LIBRARY** (red). This is runtime-only; a backend
-     restart reverts to the default.
-   - **Persistently:** run the backend with `USE_LIVE_LIBRARY=1` (or
-     `REKORDBOX_DB_PATH="$HOME/Library/Pioneer/rekordbox/master.db"`).
-
-   (`python -m backend.inspect_db` and `/api/health`'s `detected_library_path`
-   both show what auto-locate resolves to.)
+2. Check the header — badge says **MY LIBRARY** and the path is your
+   `~/Library/Pioneer/rekordbox*/master.db`. (`python -m backend.inspect_db`
+   prints the same.)
 3. Analyze and save **one** track. Reopen Rekordbox and check its Comment.
-4. If anything looks off: `python -m backend.restore`.
+4. If anything looks off: `python -m backend.restore` (or the restore endpoint).
+
+To work against a copy instead, use **use a different database…** in the header
+(or `REKORDBOX_DB_PATH=/path/to/copy/master.db`).
 
 ---
 
@@ -195,14 +196,14 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/health` | `{ db_path, db_kind (live|sample|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
+| `GET` | `/api/health` | `{ db_path, db_kind (live|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
 | `POST` | `/api/tracks/{id}/analyze` | Analyse one track + proposed comment. **No write.** 404 / 422 (no local file) / 500 |
 | `POST` | `/api/tracks/analyze` | Body `{"ids": [...]}`. Analyse many; response is an **NDJSON stream**, one line per track as it finishes. **No write.** |
 | `PUT` | `/api/tracks/{id}/comment` | Body `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
 | `PUT` | `/api/tracks/comments` | Body `{"items": [{"id", "token"\|"comment"}]}`. Writes all in **one transaction with one backup**. Any unknown id rejects the whole batch (nothing written); duplicate ids → 422 |
-| `POST` | `/api/db/switch` | Body `{"target": "live"\|"sample"\|"custom", "path"?}`. Reopens the backend against that database at runtime **and persists the choice** to `config.json` (sticky across restart). Returns fresh health. |
+| `POST` | `/api/db/switch` | Body `{"target": "live"}` (auto-locate) or `{"target": "custom", "path": "/…/master.db"}`. Reopens the backend against that database and **persists the choice** to `config.json`. Returns fresh health. |
 | `GET` | `/api/backups` | The backup listing (name, time, sizes, USN, track/tagged counts, recent edits) + the live DB's stats. |
 | `POST` | `/api/backups/{name}/restore` | Restore that backup over the live DB. Rekordbox must be closed (409 otherwise); snapshots the current DB to `*_prerestore.db` first. Returns fresh health. |
 
@@ -212,17 +213,19 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 
 ```
 backend/
-  config.py       env-configurable settings
-  db.py           pyrekordbox wrapper: reads, backup(), set_comment()
+  config.py       static/env settings (audio, dbfs_scale, …)
+  runtime.py      user-settable, persisted: db_path + backup_dir (config.json)
+  db.py           pyrekordbox wrapper: reads, backup(), set_comment(s)()
   analysis.py     decode → band-pass → dBFS → token → merge (+ CLI)
   calibrate.py    batch dBFS distribution report (CLI)
-  restore.py      list / restore backups (CLI)
-  inspect_db.py   sanity-check a master.db copy (CLI)
+  restore.py      list / restore backups (CLI + shared with the API)
+  inspect_db.py   sanity-check a master.db (CLI)
   main.py         FastAPI app
   backups/        auto-written backups (gitignored)
 frontend/src/
   App.tsx, api.ts, types.ts
-  hooks/          useTracks, useAnalyze, useUpdateComment
-  components/     TrackTable, AnalyzePanel, CommentDiff, ConfirmDialog
-sample/           local copy of master.db for development (gitignored)
+  hooks/          useTracks, useAnalyze(+Batch), useUpdateComment(+Batch)
+  components/     TrackTable, AnalyzePanel, BatchPanel, CommentDiff,
+                  ConfirmDialog, BatchConfirmDialog, DbSwitcher
+config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
 ```

@@ -28,7 +28,7 @@ from pydantic import BaseModel, model_validator
 
 from . import restore as restore_mod
 from .analysis import AudioDecodeError, BandResult, analyze_file, merge_token
-from .config import SAMPLE_DB_PATH, settings
+from .config import settings
 from .db import (
     DatabaseIntegrityError,
     RekordboxDB,
@@ -107,13 +107,13 @@ class BatchCommentResult:
 
 
 class DbSwitchRequest(BaseModel):
-    target: str  # "live" | "sample" | "custom"
+    target: str  # "live" (auto-locate) | "custom" (a chosen master.db path)
     path: Optional[str] = None
 
     @model_validator(mode="after")
     def _valid(self) -> "DbSwitchRequest":
-        if self.target not in ("live", "sample", "custom"):
-            raise ValueError("target must be 'live', 'sample' or 'custom'")
+        if self.target not in ("live", "custom"):
+            raise ValueError("target must be 'live' or 'custom'")
         if self.target == "custom" and not self.path:
             raise ValueError("'custom' target requires 'path'")
         return self
@@ -189,15 +189,10 @@ def health() -> dict:
     d = db()
     current = str(d.db_path)
     detected = detect_library_path()
-    if _same_path(current, detected):
-        db_kind = "live"
-    elif _same_path(current, SAMPLE_DB_PATH):
-        db_kind = "sample"
-    else:
-        db_kind = "custom"
+    db_kind = "live" if _same_path(current, detected) else "custom"
     return {
         "db_path": current,
-        "db_kind": db_kind,  # "live" | "sample" | "custom"
+        "db_kind": db_kind,  # "live" (the auto-located library) | "custom"
         "detected_library_path": detected,
         "rekordbox_running": rekordbox_running(),
         "track_count": d.count_tracks(),
@@ -229,12 +224,7 @@ def _swap_db(new_path: str) -> None:
 def switch_db(body: DbSwitchRequest) -> dict:
     """Reopen the backend against a different master.db at runtime, and remember
     the choice (persisted to config.json, so it survives a restart)."""
-    if body.target == "live":
-        new_path = ""  # empty -> pyrekordbox auto-locates
-    elif body.target == "sample":
-        new_path = SAMPLE_DB_PATH
-    else:
-        new_path = body.path or ""
+    new_path = "" if body.target == "live" else (body.path or "")
     _swap_db(new_path)
     return health()
 

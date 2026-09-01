@@ -62,6 +62,16 @@ header h1 {
 .db-switch .warn {
   font-size: 11px;
 }
+.db-path-input {
+  padding: 3px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  min-width: 260px;
+}
 
 .db-badge {
   font-size: 10px;
@@ -71,11 +81,6 @@ header h1 {
   border-radius: 4px;
 }
 .db-badge.db-live {
-  background: rgba(224, 100, 90, 0.2);
-  color: var(--error);
-  border: 1px solid rgba(224, 100, 90, 0.5);
-}
-.db-badge.db-sample {
   background: rgba(78, 201, 138, 0.18);
   color: var(--ok);
   border: 1px solid rgba(78, 201, 138, 0.45);

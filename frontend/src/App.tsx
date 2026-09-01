@@ -64,17 +64,11 @@ export default function App() {
                 className={`db-badge db-${health.db_kind}`}
                 title={
                   health.db_kind === 'live'
-                    ? 'Writing to your real Rekordbox library'
-                    : health.db_kind === 'sample'
-                      ? 'Writing to the bundled sample copy'
-                      : 'Custom REKORDBOX_DB_PATH'
+                    ? 'Your Rekordbox library (auto-located)'
+                    : 'A database you opened manually — not your main library'
                 }
               >
-                {health.db_kind === 'live'
-                  ? 'LIVE LIBRARY'
-                  : health.db_kind === 'sample'
-                    ? 'SAMPLE COPY'
-                    : 'CUSTOM PATH'}
+                {health.db_kind === 'live' ? 'MY LIBRARY' : 'CUSTOM DATABASE'}
               </span>
               <code>{health.db_path}</code>
               <span title={`${health.track_count} total in the library`}>
