@@ -59,20 +59,23 @@ export function PlayerPanel({ track }: { track: Track | undefined }) {
     }
   }, [player.analyser])
 
-  if (!player.currentId) return null
+  const idle = !player.currentId
 
   return (
-    <div className="player">
+    <div className={`player${idle ? ' idle' : ''}`}>
       <div className="player-top">
         <button
           className="player-play"
-          onClick={() => player.toggle(player.currentId as string)}
+          disabled={idle}
+          onClick={() => !idle && player.toggle(player.currentId as string)}
           aria-label={player.playing ? 'Pause' : 'Play'}
         >
           {player.playing ? '❚❚' : '▶'}
         </button>
         <div className="player-title">
-          {track ? (
+          {idle ? (
+            <span className="muted">Nothing playing — press ▶ on a track</span>
+          ) : track ? (
             <>
               <strong>{track.title || '—'}</strong>{' '}
               <span className="muted">— {track.artist || '—'}</span>
@@ -81,9 +84,11 @@ export function PlayerPanel({ track }: { track: Track | undefined }) {
             player.currentId
           )}
         </div>
-        <button className="linklike" onClick={player.stop}>
-          stop
-        </button>
+        {!idle && (
+          <button className="linklike" onClick={player.stop}>
+            stop
+          </button>
+        )}
       </div>
 
       <canvas ref={canvasRef} className="player-eq" />
@@ -96,6 +101,7 @@ export function PlayerPanel({ track }: { track: Track | undefined }) {
           max={player.duration || 0}
           step={0.1}
           value={Math.min(player.currentTime, player.duration || 0)}
+          disabled={idle || !player.duration}
           onChange={(e) => player.seek(Number(e.target.value))}
         />
         <span className="muted">{fmt(player.duration)}</span>

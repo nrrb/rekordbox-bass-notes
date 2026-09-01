@@ -521,6 +521,9 @@ mark.tok-new {
   align-items: center;
   gap: 10px;
 }
+.player.idle {
+  opacity: 0.7;
+}
 .player-play {
   flex: none;
   width: 30px;
@@ -532,6 +535,11 @@ mark.tok-new {
   color: #0b1020;
   font-size: 11px;
   cursor: pointer;
+}
+.player-play:disabled {
+  background: var(--border);
+  color: var(--muted);
+  cursor: default;
 }
 .player-title {
   flex: 1;
