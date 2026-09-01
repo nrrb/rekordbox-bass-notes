@@ -1,0 +1,91 @@
+"""Runtime (user-settable, persisted) configuration.
+
+``settings`` (config.py) holds the static/env knobs — audio params, dbfs_scale,
+preset letter, etc. This holds the two things an end user changes and that must
+survive a restart: which ``master.db`` to use and where backups go.
+
+Persisted to JSON:
+  - frozen app: ``~/Library/Application Support/RekordboxTagger/config.json``
+  - dev:        ``<repo>/.rkbx-config.json``  (gitignored)
+
+Precedence for each field: environment variable > config.json > built-in default.
+Dev built-ins are unchanged from before (sample DB, ``backend/backups/``).
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+from .config import SAMPLE_DB_PATH, _REPO_ROOT, _b
+
+APP_NAME = "RekordboxTagger"
+_FROZEN = bool(getattr(sys, "frozen", False))
+
+
+def config_path() -> Path:
+    if _FROZEN:
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / APP_NAME
+            / "config.json"
+        )
+    return _REPO_ROOT / ".rkbx-config.json"
+
+
+def _default_db_path() -> str:
+    # frozen build with no config yet -> auto-locate the live library ("" does that);
+    # dev -> the bundled sample copy.
+    return "" if _FROZEN else SAMPLE_DB_PATH
+
+
+def _default_backup_dir() -> str:
+    if _FROZEN:
+        return str(Path.home() / "Music" / f"{APP_NAME} Backups")
+    return str(_REPO_ROOT / "backend" / "backups")
+
+
+def _env_db_path() -> str | None:
+    """Env override, or None if the environment says nothing."""
+    if _b("USE_LIVE_LIBRARY"):
+        return ""  # auto-locate
+    return os.environ.get("REKORDBOX_DB_PATH")  # None if unset; "" is a valid value
+
+
+@dataclass
+class RuntimeConfig:
+    db_path: str = ""
+    backup_dir: str = ""
+
+    def load(self) -> "RuntimeConfig":
+        try:
+            data = json.loads(config_path().read_text())
+        except (FileNotFoundError, ValueError):
+            data = {}
+
+        env_db = _env_db_path()
+        self.db_path = (
+            env_db
+            if env_db is not None
+            else (data.get("db_path") or _default_db_path())
+        )
+        self.backup_dir = (
+            os.environ.get("BACKUP_DIR")
+            or data.get("backup_dir")
+            or _default_backup_dir()
+        )
+        return self
+
+    def save(self) -> None:
+        p = config_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(
+            json.dumps({"db_path": self.db_path, "backup_dir": self.backup_dir}, indent=2)
+        )
+
+
+runtime = RuntimeConfig().load()

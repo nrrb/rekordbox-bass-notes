@@ -18,6 +18,7 @@ import os
 import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -25,9 +26,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, model_validator
 
-from .analysis import BandResult, analyze_file, merge_token
+from . import restore as restore_mod
+from .analysis import AudioDecodeError, BandResult, analyze_file, merge_token
 from .config import SAMPLE_DB_PATH, settings
 from .db import (
+    DatabaseIntegrityError,
     RekordboxDB,
     RekordboxRunningError,
     Track,
@@ -35,6 +38,7 @@ from .db import (
     detect_library_path,
     rekordbox_running,
 )
+from .runtime import runtime
 
 
 @dataclass
@@ -151,6 +155,35 @@ def _same_path(a: str, b: Optional[str]) -> bool:
         return a == b
 
 
+def humanize(exc: Exception) -> tuple[int, str]:
+    """Map an exception to (http_status, plain-language message)."""
+    if isinstance(exc, RekordboxRunningError):
+        return 409, "Rekordbox is still open — quit it and try again."
+    if isinstance(exc, TrackNotFoundError):
+        return 404, "That track is no longer in the library."
+    if isinstance(exc, AudioDecodeError):
+        return 422, str(exc)  # already phrased for humans
+    if isinstance(exc, DatabaseIntegrityError):
+        return 500, str(exc)  # names the backup to restore
+    if isinstance(exc, FileNotFoundError):
+        return 422, (
+            "Couldn't find your Rekordbox library. Use “Change library…” "
+            "to point at your master.db."
+        )
+    text = str(exc).lower()
+    if "not a database" in text or "sqlcipher" in text or "decrypt" in text or "hmac" in text:
+        return 422, (
+            "Couldn't open that database — it may be a newer Rekordbox version "
+            "than this build supports. Tell me your Rekordbox version."
+        )
+    return 500, f"{type(exc).__name__}: {exc}"
+
+
+def _http(exc: Exception) -> HTTPException:
+    status, msg = humanize(exc)
+    return HTTPException(status_code=status, detail=msg)
+
+
 @app.get("/api/health")
 def health() -> dict:
     d = db()
@@ -172,27 +205,14 @@ def health() -> dict:
     }
 
 
-@app.post("/api/db/switch")
-def switch_db(body: DbSwitchRequest) -> dict:
-    """Reopen the backend against a different master.db at runtime.
-
-    In-process only — an actual server restart reverts to the env/default. On
-    failure the current database is left in place.
-    """
-    if body.target == "live":
-        new_path = ""  # empty -> pyrekordbox auto-locates
-    elif body.target == "sample":
-        new_path = SAMPLE_DB_PATH
-    else:
-        new_path = body.path or ""
-
+def _swap_db(new_path: str) -> None:
+    """Reopen the shared RekordboxDB against ``new_path`` and persist the choice.
+    Raises on open failure with the current DB left untouched."""
     with _swap_lock:
         try:
             new_db = RekordboxDB(new_path)
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(
-                status_code=422, detail=f"Could not open the {body.target} database: {e}"
-            ) from e
+        except Exception as e:
+            raise _http(e) from e
         old = _state.get("db")
         _state["db"] = new_db
         if old is not None:
@@ -201,6 +221,21 @@ def switch_db(body: DbSwitchRequest) -> dict:
                     old.close()
             except Exception:
                 pass
+        runtime.db_path = new_path
+        runtime.save()
+
+
+@app.post("/api/db/switch")
+def switch_db(body: DbSwitchRequest) -> dict:
+    """Reopen the backend against a different master.db at runtime, and remember
+    the choice (persisted to config.json, so it survives a restart)."""
+    if body.target == "live":
+        new_path = ""  # empty -> pyrekordbox auto-locates
+    elif body.target == "sample":
+        new_path = SAMPLE_DB_PATH
+    else:
+        new_path = body.path or ""
+    _swap_db(new_path)
     return health()
 
 
@@ -225,16 +260,16 @@ def analyze_track(track_id: str) -> AnalyzeResponse:
     """Analyse the track's audio and return the proposed comment. Does NOT write."""
     track = db().get_track(track_id)
     if track is None:
-        raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
+        raise HTTPException(status_code=404, detail="That track is no longer in the library.")
     if not track.has_file:
         raise HTTPException(
             status_code=422,
-            detail=f"Track has no local audio file: {track.folder_path or '(empty)'}",
+            detail="This track's audio file has moved or is offline.",
         )
     try:
         res = analyze_file(track.folder_path)
     except Exception as e:  # noqa: BLE001 - surface decode/DSP failures to the client
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+        raise _http(e) from e
 
     merged = merge_token(track.comment, res.token)
     return AnalyzeResponse(
@@ -270,9 +305,9 @@ def analyze_batch(body: AnalyzeBatchRequest) -> StreamingResponse:
             rec: dict = {"id": track_id, "index": i, "total": total}
             track = database.get_track(track_id)
             if track is None:
-                rec |= {"ok": False, "error": "unknown track id"}
+                rec |= {"ok": False, "error": "no longer in the library"}
             elif not track.has_file:
-                rec |= {"ok": False, "error": "no local audio file"}
+                rec |= {"ok": False, "error": "audio file has moved or is offline"}
             else:
                 try:
                     res = analyze_file(track.folder_path)
@@ -289,7 +324,7 @@ def analyze_batch(body: AnalyzeBatchRequest) -> StreamingResponse:
                         "existing_tokens": merged.existing_tokens,
                     }
                 except Exception as e:  # noqa: BLE001 - report per-track, keep going
-                    rec |= {"ok": False, "error": f"{type(e).__name__}: {e}"}
+                    rec |= {"ok": False, "error": humanize(e)[1]}
             yield json.dumps(rec) + "\n"
 
     return StreamingResponse(stream(), media_type="application/x-ndjson")
@@ -310,7 +345,7 @@ def update_comments(body: BatchCommentRequest) -> BatchCommentResult:
     for it in body.items:
         track = database.get_track(it.id)
         if track is None:
-            raise HTTPException(status_code=404, detail=f"No track with ID {it.id}")
+            raise HTTPException(status_code=404, detail=f"Track {it.id} is no longer in the library.")
         new_comment = (
             merge_token(track.comment, it.token).comment
             if it.token is not None
@@ -320,12 +355,8 @@ def update_comments(body: BatchCommentRequest) -> BatchCommentResult:
 
     try:
         backup_path, changes = database.set_comments(pairs)
-    except RekordboxRunningError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except TrackNotFoundError as e:
-        raise HTTPException(status_code=404, detail=f"Unknown track id(s): {e}")
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+    except Exception as e:
+        raise _http(e) from e
 
     return BatchCommentResult(
         backup_path=str(backup_path),
@@ -344,7 +375,7 @@ def update_comment(track_id: str, body: CommentUpdate) -> CommentUpdateResult:
     analysis.merge_token); `comment` replaces it outright."""
     track = db().get_track(track_id)
     if track is None:
-        raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
+        raise HTTPException(status_code=404, detail="That track is no longer in the library.")
 
     if body.token is not None:
         new_comment = merge_token(track.comment, body.token).comment
@@ -353,16 +384,75 @@ def update_comment(track_id: str, body: CommentUpdate) -> CommentUpdateResult:
 
     try:
         old, new, backup_path = db().set_comment(track_id, new_comment)
-    except RekordboxRunningError as e:
-        raise HTTPException(status_code=409, detail=str(e)) from e
-    except TrackNotFoundError:
-        raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
-    except Exception as e:  # noqa: BLE001 - surface commit failures to the client
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+    except Exception as e:
+        raise _http(e) from e
 
     return CommentUpdateResult(
         id=track_id, old_comment=old, new_comment=new, backup_path=str(backup_path)
     )
+
+
+# --- backups ---------------------------------------------------------------
+@app.get("/api/backups")
+def list_backups_api() -> dict:
+    d = db()
+    try:
+        live = {"db_path": str(d.db_path), **d.stats()}
+    except Exception:  # noqa: BLE001
+        live = {"db_path": str(d.db_path), "usn": None, "track_count": None, "tagged_count": None}
+    infos = restore_mod.list_backups()
+    return {
+        "backup_dir": runtime.backup_dir,
+        "live": live,
+        "backups": [
+            {
+                "name": i.path.name,
+                "taken": i.taken.isoformat() if i.taken else None,
+                "size": i.size,
+                "wal_size": i.wal_size,
+                "shm_size": i.shm_size,
+                "usn": i.usn,
+                "track_count": i.track_count,
+                "tagged_count": i.tagged_count,
+                "recent": [{"title": t, "updated_at": u} for t, u in i.recent],
+                "is_prerestore": "_prerestore" in i.path.name,
+                "error": i.error,
+            }
+            for i in infos
+        ],
+    }
+
+
+@app.post("/api/backups/{name}/restore")
+def restore_backup_api(name: str) -> dict:
+    """Restore a backup over the live database. Rekordbox must be closed. The
+    current DB is snapshotted first (``*_prerestore.db``), so this is reversible."""
+    if rekordbox_running():
+        raise HTTPException(status_code=409, detail="Quit Rekordbox before restoring a backup.")
+    infos = restore_mod.list_backups()
+    try:
+        chosen = restore_mod.resolve_backup(name, infos)
+    except LookupError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+
+    with _swap_lock:
+        old = _state["db"]
+        live = old.db_path
+        try:
+            with old._lock:
+                old.close()
+            pre = restore_mod.apply_restore(chosen, live, Path(runtime.backup_dir))
+            _state["db"] = RekordboxDB(str(live))
+        except Exception as e:
+            try:  # never leave the server without a DB handle
+                _state["db"] = RekordboxDB(str(live))
+            except Exception:
+                pass
+            raise _http(e) from e
+
+    return {"restored_from": chosen.path.name, "prerestore_snapshot": pre.name, **health()}
 
 
 # --- static SPA (packaged / one-process mode) --------------------------------

@@ -25,7 +25,8 @@ from typing import Optional
 from sqlalchemy import text
 
 from .config import settings
-from .db import RekordboxDB, RekordboxRunningError, rekordbox_running
+from .db import RekordboxDB, rekordbox_running
+from .runtime import runtime
 
 _TS_FMT = RekordboxDB.BACKUP_TS_FMT
 
@@ -109,7 +110,7 @@ def _inspect(path: Path) -> tuple[Optional[int], Optional[int], Optional[int], l
 
 
 def list_backups(backup_dir: Optional[Path] = None, live_stem: str = "master") -> list[BackupInfo]:
-    out_dir = Path(backup_dir or settings.backup_dir)
+    out_dir = Path(backup_dir or runtime.backup_dir)
     if not out_dir.is_dir():
         return []
     infos: list[BackupInfo] = []
@@ -148,7 +149,7 @@ def _print_listing(infos: list[BackupInfo], live: Path) -> None:
         print(f"  (could not read live db: {e})\n")
 
     if not infos:
-        print("no backups found in", settings.backup_dir)
+        print("no backups found in", runtime.backup_dir)
         return
 
     for n, i in enumerate(infos, 1):
@@ -179,21 +180,45 @@ def _print_listing(infos: list[BackupInfo], live: Path) -> None:
     print("restore:  python -m backend.restore <index|name>")
 
 
-def _resolve(target: str, infos: list[BackupInfo]) -> BackupInfo:
+def resolve_backup(target: str, infos: list[BackupInfo]) -> BackupInfo:
+    """Map a 1-based list index or a filename substring to one backup.
+
+    Raises ``LookupError`` (not found) or ``ValueError`` (ambiguous).
+    """
     if target.isdigit():
         idx = int(target)
         if not 1 <= idx <= len(infos):
-            raise SystemExit(f"index {idx} out of range (1..{len(infos)})")
+            raise LookupError(f"index {idx} out of range (1..{len(infos)})")
         return infos[idx - 1]
     matches = [i for i in infos if target in i.path.name]
     if not matches:
-        raise SystemExit(f"no backup name contains {target!r}")
+        raise LookupError(f"no backup name contains {target!r}")
     if len(matches) > 1:
-        raise SystemExit(
-            f"{target!r} matches {len(matches)} backups; be more specific:\n  "
-            + "\n  ".join(m.path.name for m in matches)
+        raise ValueError(
+            f"{target!r} matches {len(matches)} backups: "
+            + ", ".join(m.path.name for m in matches)
         )
     return matches[0]
+
+
+def _resolve(target: str, infos: list[BackupInfo]) -> BackupInfo:
+    """CLI wrapper: same as ``resolve_backup`` but exits with a message."""
+    try:
+        return resolve_backup(target, infos)
+    except (LookupError, ValueError) as e:
+        raise SystemExit(str(e))
+
+
+def apply_restore(chosen: BackupInfo, live: Path, backup_dir: Path) -> Path:
+    """Snapshot the current live DB, then copy ``chosen`` over it and clear the
+    live -wal/-shm. Returns the pre-restore snapshot path. Caller is responsible
+    for the Rekordbox-closed check and for reopening any DB handle.
+    """
+    pre = _snapshot_live(live, backup_dir)
+    shutil.copy2(chosen.path, live)
+    for s in ("-wal", "-shm"):
+        live.with_name(live.name + s).unlink(missing_ok=True)
+    return pre
 
 
 def _snapshot_live(live: Path, backup_dir: Path) -> Path:
@@ -208,7 +233,7 @@ def _snapshot_live(live: Path, backup_dir: Path) -> Path:
 
 
 def restore(target: str, assume_yes: bool = False, backup_dir: Optional[Path] = None) -> int:
-    out_dir = Path(backup_dir or settings.backup_dir)
+    out_dir = Path(backup_dir or runtime.backup_dir)
     infos = list_backups(out_dir)
     if not infos:
         raise SystemExit(f"no backups in {out_dir}")
@@ -230,13 +255,8 @@ def restore(target: str, assume_yes: bool = False, backup_dir: Optional[Path] = 
         if input("\nType 'restore' to proceed: ").strip().lower() != "restore":
             raise SystemExit("aborted")
 
-    pre = _snapshot_live(live, out_dir)
+    pre = apply_restore(chosen, live, out_dir)
     print(f"\ncurrent db snapshotted -> {pre.name}")
-
-    shutil.copy2(chosen.path, live)
-    for s in ("-wal", "-shm"):
-        live.with_name(live.name + s).unlink(missing_ok=True)
-
     print(f"restored. {live}\n          now holds the contents of {chosen.path.name}")
     return 0
 
@@ -245,7 +265,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap = argparse.ArgumentParser(prog="python -m backend.restore", description=__doc__.split("\n\n")[0])
     ap.add_argument("target", nargs="?", help="backup index (from the list) or a name substring")
     ap.add_argument("--yes", action="store_true", help="skip the confirmation prompt")
-    ap.add_argument("--dir", default=None, help="backup directory (default: settings.backup_dir)")
+    ap.add_argument("--dir", default=None, help="backup directory (default: runtime.backup_dir)")
     args = ap.parse_args(argv)
 
     backup_dir = Path(args.dir) if args.dir else None
@@ -255,7 +275,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             live = cur.db_path
             cur.close()
         except Exception:  # noqa: BLE001
-            live = Path(settings.db_path or "master.db")
+            live = Path(runtime.db_path or "master.db")
         _print_listing(list_backups(backup_dir), live)
         return 0
     return restore(args.target, assume_yes=args.yes, backup_dir=backup_dir)

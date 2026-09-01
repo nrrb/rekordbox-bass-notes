@@ -30,6 +30,7 @@ from pyrekordbox.db6.tables import DjmdContent
 from sqlalchemy import text
 
 from .config import settings
+from .runtime import runtime
 
 
 class RekordboxRunningError(RuntimeError):
@@ -101,7 +102,7 @@ class RekordboxDB:
     """
 
     def __init__(self, db_path: Optional[str] = None) -> None:
-        path = settings.db_path if db_path is None else db_path
+        path = runtime.db_path if db_path is None else db_path
         self._db = Rekordbox6Database(path) if path else Rekordbox6Database()
         # resolved path to the actual master.db file, for backups
         self.db_path = Path(str(self._db.engine.url.database)).resolve()
@@ -147,6 +148,21 @@ class RekordboxDB:
         content = self._get_raw_content(track_id)
         return Track.from_content(content) if content is not None else None
 
+    @_locked
+    def stats(self) -> dict:
+        """Identifying counts for the open DB: global USN, tracks, tagged tracks."""
+        sess = self._db.session
+        glob = f"*{settings.preset_letter}:[Ll][0-9][Mm][0-9][Hh][0-9]*"
+        return {
+            "usn": sess.execute(
+                text("SELECT int_1 FROM agentRegistry WHERE registry_id='localUpdateCount'")
+            ).scalar(),
+            "track_count": sess.execute(text("SELECT COUNT(*) FROM djmdContent")).scalar(),
+            "tagged_count": sess.execute(
+                text("SELECT COUNT(*) FROM djmdContent WHERE Commnt GLOB :g"), {"g": glob}
+            ).scalar(),
+        }
+
     def _get_raw_content(self, track_id: str) -> Optional[DjmdContent]:
         """The live ORM row (for mutation), not a Track snapshot."""
         try:
@@ -175,7 +191,7 @@ class RekordboxDB:
         except Exception:
             pass  # best-effort; the sidecar copies below still protect us
 
-        out_dir = Path(settings.backup_dir)
+        out_dir = Path(runtime.backup_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime(self.BACKUP_TS_FMT)
         dest = out_dir / f"{self.db_path.stem}_{ts}{self.db_path.suffix}"
@@ -192,7 +208,7 @@ class RekordboxDB:
         keep = settings.backup_keep
         if keep <= 0:
             return
-        out_dir = Path(settings.backup_dir)
+        out_dir = Path(runtime.backup_dir)
         mains = sorted(out_dir.glob(f"{self.db_path.stem}_*{self.db_path.suffix}"))
         for main in mains[:-keep]:
             for p in (main, main.with_name(main.name + "-wal"),

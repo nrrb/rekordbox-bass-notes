@@ -214,9 +214,17 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 | POST   | `/api/tracks/analyze`         | `{ ids: [...] }`              | **NDJSON stream**, one line per track: `{id, index, total, ok, …}` (ok adds token/bands/proposed_comment/…; not-ok adds `error`). No write. |
 | PUT    | `/api/tracks/{id}/comment`    | `{ token }` xor `{ comment }` | `{ id, old_comment, new_comment, backup_path }` — `token` → `merge_token` (prepend); guard (409) + WAL-checkpoint backup + `commit()` |
 | PUT    | `/api/tracks/comments`        | `{ items: [{id, token\|comment}] }` | `{ backup_path, count, results:[{id, old_comment, new_comment}] }` — **atomic**: one backup, one `commit()`, one `quick_check`; any unknown id → 404, nothing written; dup ids → 422 |
-| POST   | `/api/db/switch`              | `{ target: "live"\|"sample"\|"custom", path? }` | Reopen the shared `RekordboxDB` against another `master.db` at runtime (in-process; a real restart reverts to env/default). Returns fresh `/api/health`. 422 if the target won't open. |
+| POST   | `/api/db/switch`              | `{ target: "live"\|"sample"\|"custom", path? }` | Reopen the shared `RekordboxDB` at runtime **and persist to `config.json`** (sticky across restart). Returns fresh `/api/health`. |
+| GET    | `/api/backups`               | –                              | `{ backup_dir, live:{db_path,usn,track_count,tagged_count}, backups:[{name,taken,size,wal_size,shm_size,usn,track_count,tagged_count,recent,is_prerestore,error}] }` |
+| POST   | `/api/backups/{name}/restore`| –                              | Guarded (409 if Rekordbox open) → snapshot current DB → `apply_restore` → reopen. Returns `{restored_from, prerestore_snapshot, …health}`. |
 
 - Single shared DB instance opened at startup, closed on shutdown (`lifespan`).
+- **`backend/runtime.py`** — `RuntimeConfig {db_path, backup_dir}` loaded from
+  `config.json` (env > file > default) at import; `/api/db/switch` and the restore
+  endpoint write it. `settings` keeps the static/env knobs.
+- Errors are humanised (`humanize()` / `_http()`): library-not-found, Rekordbox
+  open, audio moved, decode/format failure, unsupported-DB-version → plain
+  sentences in `detail`.
 - CORS allowed for `http://localhost:5173`.
 - Error mapping: **404** unknown id · **409** Rekordbox running · **422** audio file
   missing/unreadable · **500** decode or commit failure (message included).

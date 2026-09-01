@@ -96,7 +96,10 @@ library. See *Going live* below.
 
 ## Configuration
 
-All via environment variables; defaults live in `backend/config.py`.
+Two user-settable values — **which `master.db`** and **where backups go** — persist
+to `config.json` (dev: `./.rkbx-config.json`, gitignored). Precedence: environment
+variable → `config.json` → default. Everything else is env-only; defaults live in
+`backend/config.py`.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -199,7 +202,9 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 | `POST` | `/api/tracks/analyze` | Body `{"ids": [...]}`. Analyse many; response is an **NDJSON stream**, one line per track as it finishes. **No write.** |
 | `PUT` | `/api/tracks/{id}/comment` | Body `{"token": "..."}` (merge/prepend) **or** `{"comment": "..."}` (replace). 409 if Rekordbox is running |
 | `PUT` | `/api/tracks/comments` | Body `{"items": [{"id", "token"\|"comment"}]}`. Writes all in **one transaction with one backup**. Any unknown id rejects the whole batch (nothing written); duplicate ids → 422 |
-| `POST` | `/api/db/switch` | Body `{"target": "live"\|"sample"}`. Reopens the backend against that database at runtime. Returns fresh health. 422 if it won't open. |
+| `POST` | `/api/db/switch` | Body `{"target": "live"\|"sample"\|"custom", "path"?}`. Reopens the backend against that database at runtime **and persists the choice** to `config.json` (sticky across restart). Returns fresh health. |
+| `GET` | `/api/backups` | The backup listing (name, time, sizes, USN, track/tagged counts, recent edits) + the live DB's stats. |
+| `POST` | `/api/backups/{name}/restore` | Restore that backup over the live DB. Rekordbox must be closed (409 otherwise); snapshots the current DB to `*_prerestore.db` first. Returns fresh health. |
 
 ---
 

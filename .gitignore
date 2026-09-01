@@ -21,3 +21,6 @@ frontend/.vite/
 
 .DS_Store
 .env
+
+# runtime config (dev)
+.rkbx-config.json
