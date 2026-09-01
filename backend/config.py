@@ -49,9 +49,15 @@ class Settings:
     )
 
     # --- audio analysis (used from build step 3 on) ---
-    audio_sr: int = field(default_factory=lambda: _i("AUDIO_SR", 2000))
+    # 500 Hz: Nyquist 250 Hz >> 150 Hz, and the low normalised band edges stay
+    # well-conditioned for an order-8 Butterworth (max |pole| ~0.98).
+    audio_sr: int = field(default_factory=lambda: _i("AUDIO_SR", 500))
+    audio_res_type: str = field(
+        default_factory=lambda: _s("AUDIO_RES_TYPE", "soxr_hq")
+    )
     # log-spaced thirds of 20-150 Hz: [low, lo/mid split, mid/high split, high]
-    band_edges_hz: tuple[float, float, float, float] = (20.0, 39.1, 76.6, 150.0)
+    # == 20 * (150/20) ** (k/3) for k in 0..3
+    band_edges_hz: tuple[float, float, float, float] = (20.0, 39.15, 76.63, 150.0)
     dbfs_min: float = field(default_factory=lambda: _f("DBFS_MIN", -48.0))
     dbfs_max: float = field(default_factory=lambda: _f("DBFS_MAX", -6.0))
     preset_letter: str = field(default_factory=lambda: _s("PRESET_LETTER", "B"))
