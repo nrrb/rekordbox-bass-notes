@@ -69,7 +69,14 @@ export default function App() {
         <TrackTable tracks={filtered} selectedId={selectedId} onSelect={setSelectedId} />
       )}
 
-      {selected && <AnalyzePanel key={selected.id} track={selected} />}
+      {selected && (
+        <AnalyzePanel
+          key={selected.id}
+          track={selected}
+          rekordboxRunning={health?.rekordbox_running ?? false}
+          onSaved={refetch}
+        />
+      )}
     </div>
   )
 }

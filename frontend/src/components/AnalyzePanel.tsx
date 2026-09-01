@@ -1,15 +1,40 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAnalyze } from '../hooks/useAnalyze'
+import { useUpdateComment } from '../hooks/useUpdateComment'
 import type { Track } from '../types'
 import { CommentDiff } from './CommentDiff'
+import { ConfirmDialog } from './ConfirmDialog'
 
-export function AnalyzePanel({ track }: { track: Track }) {
+interface Props {
+  track: Track
+  rekordboxRunning: boolean
+  /** Called after a successful save so the parent can refresh the track list. */
+  onSaved: () => void
+}
+
+export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
   const { data, loading, error, analyze, reset } = useAnalyze()
+  const { result, saving, error: saveError, save, reset: resetSave } = useUpdateComment()
+  const [confirming, setConfirming] = useState(false)
 
   // clear stale results when the selected track changes
   useEffect(() => {
     reset()
-  }, [track.id, reset])
+    resetSave()
+    setConfirming(false)
+  }, [track.id, reset, resetSave])
+
+  const handleConfirm = () => {
+    if (!data) return
+    save(track.id, data.token)
+      .then(() => {
+        setConfirming(false)
+        onSaved()
+      })
+      .catch(() => {
+        /* error is surfaced in the dialog via saveError; keep it open */
+      })
+  }
 
   return (
     <div className="analyze">
@@ -78,8 +103,39 @@ export function AnalyzePanel({ track }: { track: Track }) {
               {data.existing_tokens} existing tokens found — only the first is replaced.
             </p>
           )}
-          <p className="muted">Saving to Rekordbox comes in step 5.</p>
+
+          {result ? (
+            <p className="saved">
+              Saved. <code>{result.old_comment || '(empty)'}</code> →{' '}
+              <code>{result.new_comment}</code>
+            </p>
+          ) : (
+            <div className="save-row">
+              <button
+                onClick={() => setConfirming(true)}
+                disabled={rekordboxRunning}
+                title={rekordboxRunning ? 'Quit Rekordbox before saving' : undefined}
+              >
+                Save to Rekordbox
+              </button>
+              {rekordboxRunning && (
+                <span className="warn">Rekordbox is running — quit it to save.</span>
+              )}
+            </div>
+          )}
         </>
+      )}
+
+      {confirming && data && (
+        <ConfirmDialog
+          trackLabel={`${track.title || '—'} — ${track.artist || '—'}`}
+          oldComment={data.current_comment}
+          newComment={data.proposed_comment}
+          busy={saving}
+          error={saveError}
+          onCancel={() => setConfirming(false)}
+          onConfirm={handleConfirm}
+        />
       )}
     </div>
   )

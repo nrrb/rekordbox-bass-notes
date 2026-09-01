@@ -24,6 +24,13 @@ export interface BandResult {
   digit: number
 }
 
+export interface CommentUpdateResult {
+  id: string
+  old_comment: string
+  new_comment: string
+  backup_path: string
+}
+
 export interface AnalyzeResponse {
   id: string
   title: string

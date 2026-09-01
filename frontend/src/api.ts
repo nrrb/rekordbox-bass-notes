@@ -1,4 +1,4 @@
-import type { AnalyzeResponse, Health, Track } from './types'
+import type { AnalyzeResponse, CommentUpdateResult, Health, Track } from './types'
 
 async function getJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -34,5 +34,17 @@ export function fetchTrack(id: string): Promise<Track> {
 export function analyzeTrack(id: string): Promise<AnalyzeResponse> {
   return getJSON<AnalyzeResponse>(`/api/tracks/${encodeURIComponent(id)}/analyze`, {
     method: 'POST',
+  })
+}
+
+/** Writes the comment. Pass exactly one of `token` (merge) or `comment` (replace). */
+export function updateComment(
+  id: string,
+  body: { token: string } | { comment: string },
+): Promise<CommentUpdateResult> {
+  return getJSON<CommentUpdateResult>(`/api/tracks/${encodeURIComponent(id)}/comment`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
 }

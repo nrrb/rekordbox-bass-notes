@@ -262,3 +262,93 @@ mark.tok-new {
   color: var(--warn);
   font-size: 12px;
 }
+
+.save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.saved {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--ok);
+}
+.saved code {
+  color: var(--text);
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* --- confirm modal --- */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  width: min(480px, 90vw);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+}
+
+.modal h2 {
+  margin: 0 0 4px;
+  font-size: 16px;
+}
+
+.modal-track {
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.modal-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+.modal-row code.diff-text {
+  background: var(--bg);
+  padding: 4px 8px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.modal-actions button {
+  padding: 8px 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #0b1020;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.modal-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.modal-actions button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
