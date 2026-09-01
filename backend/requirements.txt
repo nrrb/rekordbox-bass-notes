@@ -1,0 +1,15 @@
+# Rekordbox comment tagger — backend deps
+# Install into ./.venv:  .venv/bin/pip install -r backend/requirements.txt
+
+pyrekordbox==0.4.4
+sqlcipher3-wheels==0.5.7
+SQLAlchemy==2.0.52
+fastapi>=0.115
+uvicorn[standard]>=0.30
+psutil>=6.0
+
+# audio analysis (used from build step 3 on)
+numpy>=1.26
+scipy>=1.11
+librosa>=0.10
+soundfile>=0.12
