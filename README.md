@@ -5,12 +5,15 @@ Proof of concept. A local web app that reads your Rekordbox 6/7 library with
 audio for sub-bass energy, and writes a token like **`B:l6m9h7`** into the
 track's **Comment** field — with a confirmation step and automatic backups.
 
-See [`PLAN.md`](PLAN.md) for the design and build history.
+See [`PLAN.md`](PLAN.md) for the design and build history, and
+[`DISTRIBUTION.md`](DISTRIBUTION.md) for the plan to package it as a macOS app.
 
-> **Status:** POC. Single user, local only, no auth. Touches one comment field on
-> one track per request. `pyrekordbox` write support is officially "experimental"
-> — hence the backups. The UI has been verified through the API and a production
-> build, but not yet visually rendered.
+> **Status:** working POC. Single user, local only, no auth. Only the `Commnt`
+> field is written — one track, or many in one atomic transaction.
+> `pyrekordbox` write support is officially "experimental" — hence the backups
+> and restore. Verified through the API and a production build; the UI hasn't
+> been rendered/clicked-through in a browser here (no browser in the dev
+> environment), and the player's EQ visualization is a known rough edge.
 
 ---
 
@@ -80,8 +83,9 @@ Open <http://localhost:5173>.
 1. The list shows **only tracks with a local audio file** (streaming and
    missing/relocated files are hidden). Check rows (or click them) to select;
    the header checkbox selects everything shown. The **▶ button** in each row
-   plays that track through the in-app player (top of the right column: seek
-   bar, a bar-chart EQ, play/pause).
+   plays that track through the always-visible player at the top of the right
+   column (play/pause, seek bar, a bar-chart EQ — the EQ visualization is
+   currently not showing signal, see `DISTRIBUTION.md`).
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
    dialog (old → new) → write. Results are **cached for the current library** —

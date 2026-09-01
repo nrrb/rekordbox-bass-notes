@@ -240,10 +240,12 @@ column on the right (stacks below on narrow screens).
    Album / Genre / Comment, with a client-side search box and a **checkbox per row**
    (row click also toggles) plus a select-all-shown header box. **Only tracks with a
    real local audio file are listed** (`list_tracks` filters on `has_file`).
-1a. **Player** (`player.tsx` context + `PlayerPanel.tsx`) — top of the right column
-   when something is playing: one shared `<audio>` streaming
-   `GET /api/tracks/{id}/audio` (Range-enabled), a Web Audio `AnalyserNode`
-   bar-chart EQ on a `<canvas>`, a seek bar with `m:ss` labels, play/pause, stop.
+1a. **Player** (`player.tsx` context + `PlayerPanel.tsx`) — **always shown** at the
+   top of the right column (idle state when nothing is playing): one shared
+   `<audio>` streaming `GET /api/tracks/{id}/audio` (Range-enabled), a Web Audio
+   `AnalyserNode` bar-chart EQ on a `<canvas>` (**not rendering signal reliably —
+   see DISTRIBUTION.md *Known rough edges***), a seek bar with `m:ss` labels,
+   play/pause, stop.
    **Analysis cache** (`analysisCache.tsx`): results are kept per track id for the
    life of the current library (cleared on DB switch / restore), so deselecting and
    reselecting a track shows its result immediately, and the single / batch flows
@@ -350,11 +352,16 @@ the core loop is analyse → confirm → save; add it later if wanted.)_
    untouched. Tested against `sample/master.db`; a real pre-existing comment
    (a YouTube link) was incidentally overwritten mid-test and restored from the
    run's own backup.
-6. **Go live** — `dbfs_scale` already calibrated (step 3); re-run `backend/calibrate.py`
-   only if re-tuning. Point `REKORDBOX_DB_PATH` at the real `master.db`, quit Rekordbox,
-   do one real edit, reopen Rekordbox, verify the comment shows on the track. Record the
-   frozen `dbfs_scale` in the README.
-7. **README** — quit Rekordbox · activate `.venv` · run `uvicorn` + `npm run dev`.
+6. **Go live** ✅ (mechanism) — `dbfs_scale` calibrated (step 3); the app now defaults
+   to the real library (auto-located), so "go live" is just: quit Rekordbox, do one
+   real edit, reopen Rekordbox, verify. The **first real write on a user's machine**
+   still hasn't been done here.
+7. **README** ✅ — written; see also `DISTRIBUTION.md`.
+
+_Since step 7 the project has grown well past the original plan: batch analyze/write,
+runtime DB switching, backup/restore API + panel, human errors, a two-column layout,
+an analysis cache, an audio player, and Phase 0 of the macOS packaging effort
+(`DISTRIBUTION.md`)._
 
 ---
 
