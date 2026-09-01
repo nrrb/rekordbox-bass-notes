@@ -14,26 +14,30 @@ const BARS = 28
 export function PlayerPanel({ track }: { track: Track | undefined }) {
   const player = usePlayer()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rafRef = useRef<number | undefined>(undefined)
+
+  // read the analyser through a ref so a single mount-time loop always sees the
+  // current node (it's null until the first play wires the Web Audio graph)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  analyserRef.current = player.analyser
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const g = canvas.getContext('2d')
     if (!g) return
-    const accent =
-      getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#6ea8fe'
-    const muted =
-      getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || '#2c2f3a'
+    const css = getComputedStyle(document.documentElement)
+    const accent = css.getPropertyValue('--accent').trim() || '#6ea8fe'
+    const muted = css.getPropertyValue('--border').trim() || '#2c2f3a'
+    let raf = 0
 
     const draw = () => {
-      rafRef.current = requestAnimationFrame(draw)
+      raf = requestAnimationFrame(draw)
       const w = (canvas.width = canvas.clientWidth || 280)
       const h = (canvas.height = canvas.clientHeight || 44)
       g.clearRect(0, 0, w, h)
       const bw = w / BARS
 
-      const an = player.analyser
+      const an = analyserRef.current
       const levels = new Array<number>(BARS).fill(0)
       const live = !!an
       if (an) {
@@ -54,10 +58,8 @@ export function PlayerPanel({ track }: { track: Track | undefined }) {
       }
     }
     draw()
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    }
-  }, [player.analyser])
+    return () => cancelAnimationFrame(raf)
+  }, [])
 
   const idle = !player.currentId
 

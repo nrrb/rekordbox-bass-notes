@@ -11,9 +11,9 @@ See [`PLAN.md`](PLAN.md) for the design and build history, and
 > **Status:** working POC. Single user, local only, no auth. Only the `Commnt`
 > field is written — one track, or many in one atomic transaction.
 > `pyrekordbox` write support is officially "experimental" — hence the backups
-> and restore. Verified through the API and a production build; the UI hasn't
-> been rendered/clicked-through in a browser here (no browser in the dev
-> environment), and the player's EQ visualization is a known rough edge.
+> and restore. Verified through the API and a production build; most of the UI
+> hasn't been rendered/clicked-through in a browser here (no browser in the dev
+> environment).
 
 ---
 
@@ -84,8 +84,7 @@ Open <http://localhost:5173>.
    missing/relocated files are hidden). Check rows (or click them) to select;
    the header checkbox selects everything shown. The **▶ button** in each row
    plays that track through the always-visible player at the top of the right
-   column (play/pause, seek bar, a bar-chart EQ — the EQ visualization is
-   currently not showing signal, see `DISTRIBUTION.md`).
+   column (play/pause, seek bar, a Web Audio bar-chart EQ).
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
    dialog (old → new) → write. Results are **cached for the current library** —

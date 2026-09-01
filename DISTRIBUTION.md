@@ -58,7 +58,9 @@ toward distribution:
   `python -m backend.restore` shares the same code.
 - **Audio player** — `GET /api/tracks/{id}/audio` (Range-enabled `FileResponse`);
   a ▶ button per row and an always-visible `PlayerPanel` (play/pause, seek,
-  Web Audio bar-chart EQ). See *Known rough edges*.
+  Web Audio bar-chart EQ). The EQ draw loop reads the `AnalyserNode` through a
+  ref, so it attaches on the first play of a fresh load (earlier it needed a
+  page refresh).
 - **Human errors** — `humanize()` maps the common failures to plain `detail`
   sentences.
 - **Layout** — two-column workspace: track list 70%, sticky detail column 30%
@@ -74,12 +76,9 @@ toward distribution:
 
 ### Known rough edges
 
-- **Player spectrum analyzer** — the EQ visualization is not rendering signal
-  reliably (reported not working). Suspects: the `useEffect` closure capturing a
-  stale `analyser` (null → node), and/or `AudioContext` resume timing, and/or the
-  linear bin→bar mapping making a bass-heavy signal look dead. Fix: read the
-  analyser through a ref in the rAF loop, `resume()` the context on play, and map
-  bars log-spaced over the low/mid spectrum. Not yet done.
+- The player's EQ uses a **linear** bin→bar mapping, so a bass-heavy track only
+  really moves the first few bars. A log-spaced mapping over the low/mid spectrum
+  would look more like a proper analyzer — nice-to-have, not blocking.
 - The player has only been exercised in dev (Chrome via the Vite proxy); Range
   playback and Web Audio behaviour in the packaged pywebview (WebKit) shell are
   untested.
@@ -350,7 +349,7 @@ backup endpoints, and the static mount.
 | M0 | One process | `launcher.py` + pywebview, `127.0.0.1:0` port, graceful shutdown, single-instance lock | ~0.5 day |
 | M1 | Deps | bundle `ffmpeg` (`imageio-ffmpeg`) for M4A/AAC/ALAC; pin the rest of `requirements.txt` | ~0.5 day |
 | M2 | Loose ends | file logging to `~/Library/Logs/RekordboxTagger/`; native file dialog for the path fields; check RB v5 path variant | ~0.5 day |
-| M3 | ~~UI panels~~ | ✅ done — restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer, 70/30 layout, analysis cache, batch accordion, audio player (EQ viz needs a fix — see *Known rough edges*) | — |
+| M3 | ~~UI panels~~ | ✅ done — restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer, 70/30 layout, analysis cache, batch accordion, audio player + EQ | — |
 | M4 | Package | `.icns` icon; PyInstaller spec that runs frozen (sqlcipher3 / ffmpeg / data-file iterations); `scripts/build_app.sh` → `.dmg` (arm64) | ~1–2 days |
 | M5 | Field test | clean-machine / friend's-Mac run; fix what breaks; release to 1–2 people | ~0.5–1 day + iteration |
 | M6 | Ship | wider release; in-app update-check banner (`last_seen_version`) | ~0.5 day |
