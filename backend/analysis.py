@@ -6,8 +6,10 @@ producing a token like ``B:L5M7H9``:
 
     B:      fixed preset prefix (``settings.preset_letter``)
     L/M/H   Low / Medium / High sub-band
-    digit   0-9, where ``d`` means "d0-d9 % strength"; the scale maps
-            ``settings.dbfs_min`` dBFS -> 0 and ``settings.dbfs_max`` dBFS -> 9
+    digit   0-9, where ``d`` means "d0-d9 % strength"; per band the scale maps
+            ``settings.dbfs_scale[band]`` -> (min dBFS -> 0, max dBFS -> 9).
+            Absolute (referenced to full scale), so digits are comparable
+            across any tracks; frozen once written (recalibrate => bump preset).
 
 Method (see PLAN.md, "Locked-in decisions"):
 
@@ -127,9 +129,9 @@ def _to_dbfs(rms: float) -> float:
     return 20.0 * math.log10(max(rms, _TINY) / _DBFS_REF_RMS)
 
 
-def _digit(dbfs: float) -> int:
-    lo, hi = settings.dbfs_min, settings.dbfs_max
-    frac = (dbfs - lo) / (hi - lo)  # 0..1 across the fixed scale
+def _digit(dbfs: float, band: str) -> int:
+    lo, hi = settings.dbfs_scale[band]
+    frac = (dbfs - lo) / (hi - lo)  # 0..1 across this band's fixed absolute scale
     return int(min(9, max(0, math.floor(frac * 10.0))))
 
 
@@ -162,7 +164,7 @@ def analyze_samples(y: np.ndarray, fs: int) -> AnalysisResult:
         y_band = signal.sosfiltfilt(sos, y)
         rms = _rms(y_band)
         dbfs = _to_dbfs(rms)
-        bands.append(BandResult(label, lo, hi, rms, dbfs, _digit(dbfs)))
+        bands.append(BandResult(label, lo, hi, rms, dbfs, _digit(dbfs, label)))
 
     token = settings.preset_letter + ":" + "".join(f"{b.band}{b.digit}" for b in bands)
     return AnalysisResult(

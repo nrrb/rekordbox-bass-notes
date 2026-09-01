@@ -45,7 +45,7 @@ select track ──▶ "Analyze audio" ──▶ backend locates file (DjmdConte
                           Low 20–39 Hz · Med 39–77 Hz · High 77–150 Hz
                                           │
                                           ▼
-                        per band: RMS → dBFS → digit 0–9 (fixed dBFS scale)
+                per band: RMS → dBFS → digit 0–9 (per-band absolute dBFS scale)
                                           │
                                           ▼
                      token "B:L{dL}M{dM}H{dH}"  +  merged-comment preview
@@ -95,7 +95,7 @@ port just that.
 |---------------------|-------|
 | Band edges          | **Log-spaced thirds of 20–150 Hz** → 20.0 / 39.1 / 76.6 / 150.0 Hz (displayed rounded: 20 / 39 / 77 / 150). Configurable. |
 | Per-band metric     | Zero-phase Butterworth band-pass (order 8, SOS) → **RMS in dBFS** (0 dBFS = full-scale). |
-| dBFS → digit        | Linear map: `DBFS_MIN` (−48) → 0 … `DBFS_MAX` (−6) → 9, clamped. `digit = clamp(floor((dbfs − DBFS_MIN) / (DBFS_MAX − DBFS_MIN) * 10), 0, 9)`. Endpoints **calibrated on real tracks in step 6**. |
+| dBFS → digit        | **Per-band** linear map, **absolute** (referenced to digital full scale, not track loudness). `settings.dbfs_scale[band]` = `(min → digit 0, max → digit 9)`, clamped: `digit = clamp(floor((dbfs − min) / (max − min) * 10), 0, 9)`. Calibrated from p5/p95 of a 117-track sample: **L −46→−18, M −23→−7, H −20→−9** (`backend/calibrate.py`). Frozen once tokens are written to the real DB — a recalibration must bump the preset letter (`B` → `C`). |
 | Preset prefix       | `B:` — constant, configurable `PRESET_LETTER`. |
 | Analysis window     | Whole track (RMS over full duration). |
 | Comment merge       | Regex `B:L\dM\dH\d` → replace first match in place; if absent, append after a space. Rest of the comment is preserved. |
@@ -136,9 +136,10 @@ port just that.
 ## Backend
 
 ### `backend/config.py`
-Env-configurable: `DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (2000), `BAND_EDGES_HZ`,
-`DBFS_MIN` (−48), `DBFS_MAX` (−6), `PRESET_LETTER` (`B`), `FILTER_ORDER` (8),
-`COMMENT_SEP` (`" "`).
+Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
+`AUDIO_RES_TYPE` (`soxr_hq`), `band_edges_hz` (20/39.15/76.63/150),
+`dbfs_scale` per band via `DBFS_{MIN,MAX}_{L,M,H}` (see Locked-in decisions),
+`PRESET_LETTER` (`B`), `FILTER_ORDER` (8), `COMMENT_SEP` (`" "`), `BACKUP_DIR`.
 
 ### `backend/db.py` — `pyrekordbox` wrapper
 - `open_db()` → `Rekordbox6Database(path=settings.DB_PATH)` (defaults to auto-detect).
@@ -154,22 +155,29 @@ Env-configurable: `DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (2000), `BAND_EDGES_HZ`,
   6. Return `{ id, old_comment, new_comment }`.
 
 ### `backend/analysis.py` — audio analysis
-- `analyze_file(path, cfg) -> BandResult`:
-  - `y, sr = librosa.load(path, sr=cfg.AUDIO_SR, mono=True)` — resample-on-load keeps
-    decode + filtering sub-second; Nyquist 1 kHz ≫ 150 Hz.
+- `analyze_file(path) -> AnalysisResult`:
+  - `librosa.load(path, sr=settings.audio_sr, mono=True, res_type=settings.audio_res_type)`
+    — 500 Hz; Nyquist 250 Hz ≫ 150 Hz, and low normalised band edges keep the
+    order-8 Butterworth well-conditioned (max |pole| ~0.98). ~1 s/track warm.
   - For each band `[lo, hi]`:
-    `sos = scipy.signal.butter(cfg.FILTER_ORDER, [lo, hi], 'band', fs=sr, output='sos')`
+    `sos = scipy.signal.butter(settings.filter_order, [lo/nyq, hi/nyq], 'band', output='sos')`
+    (with a stability guard rejecting max |pole| ≥ 0.999)
     → `yb = scipy.signal.sosfiltfilt(sos, y)`
-    → `dbfs = 20*log10(max(rms(yb), 1e-9))`
-    → `digit = clamp(floor((dbfs − DBFS_MIN) / (DBFS_MAX − DBFS_MIN) * 10), 0, 9)`.
-  - `token = f"{cfg.PRESET_LETTER}:L{dL}M{dM}H{dH}"`.
-  - Returns per-band `{ band, hz_low, hz_high, dbfs, digit }` + `token`.
-- `merge_token(comment: str, token: str) -> str`:
-  - `re.sub(r'B:L\dM\dH\d', token, comment, count=1)` if the pattern is present;
-  - else `f"{comment}{cfg.COMMENT_SEP}{token}".strip()`.
+    → `dbfs = 20*log10(rms(yb) / (1/√2))`  (0 dBFS = full-scale sine, AES-17)
+    → `digit = _digit(dbfs, band)` using the per-band `settings.dbfs_scale`.
+  - `token = f"{settings.preset_letter}:L{dL}M{dM}H{dH}"`.
+  - Returns `AnalysisResult` = per-band `{ band, hz_low, hz_high, rms, dbfs, digit }`
+    + `token` + `{ path, sample_rate, duration_sec, n_samples }`.
+- `analyze_samples(y, fs)` — same, on an already-decoded mono array (used by tests).
+- `merge_token(comment, token) -> MergeResult`:
+  - `re.sub(<preset>:L\dM\dH\d, token, comment, count=1)` if the pattern is present
+    → `action="replaced"`; else append after `settings.comment_sep` → `"appended"`.
+  - `existing_tokens` count reported so >1 stale duplicates can be flagged.
   - Single home for this logic — the frontend never does string surgery.
-- CLI entry point: `python -m backend.analysis <file>` prints the band table + token
-  (used for calibration in step 3 / step 6).
+- CLI: `python -m backend.analysis TARGET… [--json] [--sr N] [--comment T]`,
+  `TARGET` = audio file path or Rekordbox track ID.
+- `backend/calibrate.py` — batch every local track → per-band dBFS percentile
+  report + histogram + suggested `dbfs_scale` endpoints; writes `calibration.json`.
 
 ### `backend/main.py` — routes
 
@@ -261,16 +269,19 @@ writertest/
    `/api/health`. Verify against a **copy** of `master.db`; confirm titles / artists /
    comments come through.
 2. **Frontend read-only** — Vite app, track table + search, wired to `/api/tracks`.
-3. **Analysis module standalone** — `analysis.py` as `python -m backend.analysis <file>`
-   printing the band table + token. Tune on ~5 of your own tracks before wiring HTTP.
+3. **Analysis module standalone** ✅ — `backend/analysis.py` + CLI. Verified on
+   synthetic tones and 6 real tracks. `backend/calibrate.py` added.
+   **Calibration done here** (ahead of step 6): per-band `dbfs_scale` set from the
+   p5/p95 of a 117-track batch — L −46→−18, M −23→−7, H −20→−9 — giving a full
+   0–9 digit spread on L and H (M stays top-heavy, matching the real distribution).
 4. **`POST /analyze` + AnalyzePanel** — full analyze-and-preview loop, still no writes.
 5. **Write path** — `PUT /api/tracks/{id}/comment` with `merge_token`, Rekordbox-running
    guard, timestamped `master.db` backup, `commit()`. Test end-to-end on the copy:
    reopen the DB and confirm the token landed in `Commnt`.
-6. **Calibrate + go live** — run analyze across a spread of tracks (known bass-heavy vs
-   thin); set `DBFS_MIN` / `DBFS_MAX` so digits use the full 0–9 range sensibly. Point
-   `DB_PATH` at the real `master.db`, quit Rekordbox, do one real edit, reopen
-   Rekordbox, verify the comment shows on the track.
+6. **Go live** — `dbfs_scale` already calibrated (step 3); re-run `backend/calibrate.py`
+   only if re-tuning. Point `REKORDBOX_DB_PATH` at the real `master.db`, quit Rekordbox,
+   do one real edit, reopen Rekordbox, verify the comment shows on the track. Record the
+   frozen `dbfs_scale` in the README.
 7. **README** — quit Rekordbox · activate `.venv` · `brew install ffmpeg` ·
    run `uvicorn` + `npm run dev`.
 
@@ -305,8 +316,11 @@ for fill-in. Opus fast mode is a good fit for steps 3 and 5 if available.
   write.
 - **Rekordbox locking / corruption** — never write while the app is open; the backend
   enforces this and backs up first. Pause Rekordbox cloud/library sync during testing.
-- **dBFS → digit calibration is the soft spot.** The −48 / −6 endpoints are a starting
-  guess; step 6 exists to fix them against real material. Until then digits may cluster.
+- **dBFS → digit calibration** — done (step 3): per-band `dbfs_scale` from a 117-track
+  batch. L and H use the full 0–9 range; **M stays weighted to 7–9** because 39–77 Hz
+  really is near-maxed in modern club masters — that is the true distribution, not a
+  scaling artifact. Endpoints must be frozen before writing to the live DB; recalibration
+  ⇒ bump `preset_letter`.
 - **Rekordbox track gain is not applied to the file** — analysis measures the raw file
   level, so two masters of the same track at different loudness score differently. If
   loudness-normalized digits are preferred, normalize to −14 LUFS before filtering

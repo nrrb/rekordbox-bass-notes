@@ -58,8 +58,20 @@ class Settings:
     # log-spaced thirds of 20-150 Hz: [low, lo/mid split, mid/high split, high]
     # == 20 * (150/20) ** (k/3) for k in 0..3
     band_edges_hz: tuple[float, float, float, float] = (20.0, 39.15, 76.63, 150.0)
-    dbfs_min: float = field(default_factory=lambda: _f("DBFS_MIN", -48.0))
-    dbfs_max: float = field(default_factory=lambda: _f("DBFS_MAX", -6.0))
+    # dBFS -> digit endpoints, per band: min -> digit 0, max -> digit 9 (linear).
+    # ABSOLUTE scale -- referenced to digital full scale, not track loudness --
+    # so a given dBFS always yields the same digit, comparable across any tracks
+    # (present or future). Values calibrated from the p5/p95 of a 117-track
+    # sample; see backend/calibrate.py. Freeze once tokens are written to the
+    # real DB; a later recalibration must bump preset_letter (B -> C) so mixed
+    # vintages stay distinguishable.
+    dbfs_scale: dict[str, tuple[float, float]] = field(
+        default_factory=lambda: {
+            "L": (_f("DBFS_MIN_L", -46.0), _f("DBFS_MAX_L", -18.0)),
+            "M": (_f("DBFS_MIN_M", -23.0), _f("DBFS_MAX_M", -7.0)),
+            "H": (_f("DBFS_MIN_H", -20.0), _f("DBFS_MAX_H", -9.0)),
+        }
+    )
     preset_letter: str = field(default_factory=lambda: _s("PRESET_LETTER", "B"))
     filter_order: int = field(default_factory=lambda: _i("FILTER_ORDER", 8))
     comment_sep: str = field(default_factory=lambda: _s("COMMENT_SEP", " "))

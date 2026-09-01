@@ -1,6 +1,6 @@
 """Batch-analyse every local track and summarise per-band dBFS distributions.
 
-Raw material for build step 6 (calibrating settings.dbfs_min / dbfs_max).
+Raw material for calibrating settings.dbfs_scale (the per-band dBFS endpoints).
 
 Usage:
     python -m backend.calibrate [--limit N] [--out results.json]
@@ -108,15 +108,16 @@ def main(argv=None) -> int:
         # suggest endpoints: map p5..p95 onto 0..9 (a touch of head/tail room)
         sug_lo = round(pcts[5])
         sug_hi = round(pcts[95])
-        print(f"  suggested for this band:  dbfs_min={sug_lo}  dbfs_max={sug_hi}\n")
+        print(f"  suggested dbfs_scale[{band!r}] = ({sug_lo}, {sug_hi})\n")
 
-    # digit distribution under the CURRENT global scale
-    print(f"--- digit spread under current scale (dbfs_min={settings.dbfs_min}, dbfs_max={settings.dbfs_max}) ---")
+    # digit distribution under the CURRENT per-band scale
+    print("--- digit spread under current per-band dbfs_scale ---")
     for band in ("L", "M", "H"):
+        lo, hi = settings.dbfs_scale[band]
         hist = [0] * 10
         for r in rows:
             hist[r["digit"][band]] += 1
-        print(f"  {band}: " + " ".join(f"{d}:{hist[d]:>3}" for d in range(10)))
+        print(f"  {band} [{lo:+.0f}..{hi:+.0f} dBFS]: " + " ".join(f"{d}:{hist[d]:>3}" for d in range(10)))
 
     return 0
 
