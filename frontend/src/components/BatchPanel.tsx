@@ -64,52 +64,35 @@ export function BatchPanel({ tracks, rekordboxRunning, onSaved, onClear }: Props
       {error && <p className="error">Batch analysis failed: {error}</p>}
 
       {items.size > 0 && (
-        <table className="batch">
-          <thead>
-            <tr>
-              <th>track</th>
-              <th>token</th>
-              <th>comment change</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tracks.map((t) => {
-              const it = items.get(t.id)
-              return (
-                <tr key={t.id}>
-                  <td>
-                    {t.title || '—'} <span className="muted">— {t.artist || '—'}</span>
-                  </td>
-                  {!it ? (
-                    <td colSpan={2} className="muted">
-                      {running ? '…' : '—'}
-                    </td>
-                  ) : !it.ok ? (
-                    <td colSpan={2} className="error">
-                      {it.error}
-                    </td>
-                  ) : (
-                    <>
-                      <td>
-                        <code className="token">{it.token}</code>
-                      </td>
-                      <td className="comment-cell">
-                        {it.proposed_comment === it.current_comment ? (
-                          <span className="muted">no change</span>
-                        ) : (
-                          <>
-                            <span className="muted">{it.current_comment || '(empty)'}</span> →{' '}
-                            {it.proposed_comment}
-                          </>
-                        )}
-                      </td>
-                    </>
-                  )}
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+        <div className="batch-list">
+          {tracks.map((t) => {
+            const it = items.get(t.id)
+            return (
+              <div key={t.id} className="batch-item">
+                <div className="batch-item-title">
+                  {t.title || '—'} <span className="muted">— {t.artist || '—'}</span>
+                </div>
+                {!it ? (
+                  <div className="muted">{running ? 'analysing…' : '—'}</div>
+                ) : !it.ok ? (
+                  <div className="error">{it.error}</div>
+                ) : (
+                  <div className="batch-item-body">
+                    <code className="token">{it.token}</code>{' '}
+                    {it.proposed_comment === it.current_comment ? (
+                      <span className="muted">no change</span>
+                    ) : (
+                      <span className="batch-item-change">
+                        <span className="muted">{it.current_comment || '(empty)'}</span> →{' '}
+                        {it.proposed_comment}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       )}
 
       {analysed && !result && (

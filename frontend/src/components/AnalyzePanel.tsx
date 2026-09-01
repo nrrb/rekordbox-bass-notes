@@ -64,19 +64,17 @@ export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
               <tr>
                 <th>band</th>
                 <th>range</th>
-                <th>RMS</th>
                 <th>dBFS</th>
                 <th>digit</th>
               </tr>
             </thead>
             <tbody>
               {data.bands.map((b) => (
-                <tr key={b.band}>
+                <tr key={b.band} title={`RMS ${b.rms.toFixed(5)}`}>
                   <td>{b.band}</td>
                   <td>
-                    {b.hz_low.toFixed(0)}–{b.hz_high.toFixed(0)} Hz
+                    {b.hz_low.toFixed(0)}–{b.hz_high.toFixed(0)}&nbsp;Hz
                   </td>
-                  <td>{b.rms.toFixed(5)}</td>
                   <td>{b.dbfs.toFixed(1)}</td>
                   <td className="digit">{b.digit}</td>
                 </tr>

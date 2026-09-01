@@ -231,17 +231,22 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 ## Frontend
 
 ### Views
+
+Two-column workspace: the track list at **70%** width, a sticky **30%** detail
+column on the right (stacks below on narrow screens).
+
 1. **Track list** (`TrackTable.tsx`) — Title / Artist / Album / Genre / Comment with a
    client-side search box and a **checkbox per row** (row click also toggles) plus a
    select-all-shown header box. **Only tracks with a real local audio file are listed**
    (`list_tracks` filters on `has_file`). Backend caps results (e.g. 500).
-2. **Single panel** (`AnalyzePanel.tsx`) — shown when exactly 1 row is selected.
-   "Analyze audio" → band table (`L | 20–39 Hz | 0.01187 | −35.5 | 3`), proposed token
+2. **Single panel** (`AnalyzePanel.tsx`) — in the right column when exactly 1 row is
+   selected. "Analyze audio" → band table (`L | 20–39 Hz | −35.5 | 3`), proposed token
    `B:l3m9h7`, `CommentDiff.tsx` (existing token struck / new prepended token green),
    "Save to Rekordbox" → `ConfirmDialog.tsx` (old → new) → `PUT /…/comment`.
-3. **Batch panel** (`BatchPanel.tsx`) — shown when ≥2 rows selected. "Analyze N" →
-   consumes the NDJSON stream, showing `Analyzing done/total…` and a per-track results
-   table (token + `current → proposed`, or "no change", or an error). "Save M to
+3. **Batch panel** (`BatchPanel.tsx`) — in the right column when ≥2 rows selected.
+   "Analyze N" → consumes the NDJSON stream, showing `Analyzing done/total…` and a
+   per-track card list (token + `current → proposed`, or "no change", or an error).
+   "Save M to
    Rekordbox" (M = tracks whose comment actually changes) → `BatchConfirmDialog.tsx`
    (scrollable list of every change) → `PUT /api/tracks/comments` (one atomic write) →
    "Saved M … Backup: …".

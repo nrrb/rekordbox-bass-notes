@@ -148,30 +148,43 @@ export default function App() {
           {error && <p className="error">Failed to load tracks: {error}</p>}
 
           {!error && (
-            <TrackTable
-              tracks={filtered}
-              selectedIds={selectedIds}
-              onToggle={toggle}
-              onToggleAll={toggleAll}
-            />
-          )}
+            <div className="workspace">
+              <div className="workspace-list">
+                <TrackTable
+                  tracks={filtered}
+                  selectedIds={selectedIds}
+                  onToggle={toggle}
+                  onToggleAll={toggleAll}
+                />
+              </div>
 
-          {selectedTracks.length === 1 && (
-            <AnalyzePanel
-              key={selectedTracks[0].id}
-              track={selectedTracks[0]}
-              rekordboxRunning={rekordboxRunning}
-              onSaved={refetch}
-            />
-          )}
+              <aside className="workspace-detail">
+                {selectedTracks.length === 0 && (
+                  <p className="detail-empty muted">
+                    Select a track to analyse its low end. Pick two or more for a
+                    batch.
+                  </p>
+                )}
 
-          {selectedTracks.length >= 2 && (
-            <BatchPanel
-              tracks={selectedTracks}
-              rekordboxRunning={rekordboxRunning}
-              onSaved={refetch}
-              onClear={clearSelection}
-            />
+                {selectedTracks.length === 1 && (
+                  <AnalyzePanel
+                    key={selectedTracks[0].id}
+                    track={selectedTracks[0]}
+                    rekordboxRunning={rekordboxRunning}
+                    onSaved={refetch}
+                  />
+                )}
+
+                {selectedTracks.length >= 2 && (
+                  <BatchPanel
+                    tracks={selectedTracks}
+                    rekordboxRunning={rekordboxRunning}
+                    onSaved={refetch}
+                    onClear={clearSelection}
+                  />
+                )}
+              </aside>
+            </div>
           )}
         </>
       )}

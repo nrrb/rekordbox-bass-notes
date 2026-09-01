@@ -168,6 +168,45 @@ header h1 {
   color: var(--error);
 }
 
+/* --- two-column workspace: 70% list / 30% detail --- */
+.workspace {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+.workspace-list {
+  flex: 7 1 0;
+  min-width: 0;
+}
+.workspace-detail {
+  flex: 3 1 0;
+  min-width: 0;
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.workspace-detail .analyze,
+.workspace-detail .restore-panel {
+  margin-top: 0;
+}
+.detail-empty {
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+@media (max-width: 860px) {
+  .workspace {
+    flex-direction: column;
+  }
+  .workspace-detail {
+    position: static;
+    max-height: none;
+    width: 100%;
+  }
+}
+
 .table-wrap {
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -231,8 +270,9 @@ tbody tr.selected {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
 .analyze-title {
@@ -255,16 +295,17 @@ tbody tr.selected {
 }
 
 table.bands {
-  width: auto;
+  width: 100%;
   margin: 6px 0 12px;
-  font-size: 13px;
+  font-size: 12px;
 }
 table.bands th,
 table.bands td {
-  padding: 4px 16px 4px 0;
+  padding: 4px 10px 4px 0;
   border: none;
   text-align: left;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 table.bands th {
   position: static;
@@ -447,23 +488,23 @@ button.linklike {
   text-decoration: underline;
 }
 
-table.batch {
-  width: 100%;
+.batch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   margin: 8px 0 12px;
-  font-size: 13px;
 }
-table.batch th {
-  position: static;
-  background: none;
-  color: var(--muted);
-  font-weight: 500;
-  text-align: left;
-  padding: 4px 12px 4px 0;
+.batch-item {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
 }
-table.batch td {
-  padding: 5px 12px 5px 0;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
+.batch-item-title {
+  margin-bottom: 3px;
+}
+.batch-item-body {
+  overflow-wrap: anywhere;
 }
 
 .modal-wide {
