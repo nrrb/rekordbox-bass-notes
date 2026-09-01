@@ -10,6 +10,10 @@ sample/
 # auto-written master.db backups
 backend/backups/
 
+# calibration batch output (derived from the private library)
+calibration.json
+
+
 # node / vite
 node_modules/
 dist/
