@@ -1,22 +1,23 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import './App.css'
-import { fetchHealth } from './api'
 import { AnalyzePanel } from './components/AnalyzePanel'
 import { BatchPanel } from './components/BatchPanel'
 import { DbSwitcher } from './components/DbSwitcher'
+import { NoLibrary } from './components/NoLibrary'
+import { RekordboxBanner } from './components/RekordboxBanner'
+import { RestorePanel } from './components/RestorePanel'
 import { TrackTable } from './components/TrackTable'
+import { useHealth } from './hooks/useHealth'
 import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
 
 export default function App() {
+  const { health, reachable, reload: reloadHealth, setHealth } = useHealth()
   const { tracks, loading, error, refetch } = useTracks()
-  const [health, setHealth] = useState<Health | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-
-  useEffect(() => {
-    fetchHealth().then(setHealth).catch(() => setHealth(null))
-  }, [])
+  const [showBackups, setShowBackups] = useState(false)
+  const [rechecking, setRechecking] = useState(false)
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -53,11 +54,36 @@ export default function App() {
 
   const rekordboxRunning = health?.rekordbox_running ?? false
 
+  // Health object pushed from an endpoint (switch / restore) → also refresh tracks.
+  const onHealthChanged = useCallback(
+    (h: Health) => {
+      setHealth(h)
+      clearSelection()
+      refetch()
+    },
+    [setHealth, clearSelection, refetch],
+  )
+
+  const recheck = useCallback(() => {
+    setRechecking(true)
+    reloadHealth().finally(() => setRechecking(false))
+  }, [reloadHealth])
+
   return (
     <div className="app">
       <header>
         <h1>Rekordbox Comment Tagger</h1>
-        {health ? (
+        {!health ? (
+          <div className="meta">
+            <span className="muted">
+              {reachable ? 'connecting…' : 'backend unreachable — is it running?'}
+            </span>
+          </div>
+        ) : health.db_kind === 'none' ? (
+          <div className="meta">
+            <span className="db-badge db-none">NO DATABASE</span>
+          </div>
+        ) : (
           <>
             <div className="meta">
               <span
@@ -77,14 +103,7 @@ export default function App() {
               <span className={health.rekordbox_running ? 'warn' : 'ok'}>
                 Rekordbox {health.rekordbox_running ? 'running' : 'closed'}
               </span>
-              <DbSwitcher
-                health={health}
-                onSwitched={(h) => {
-                  setHealth(h)
-                  clearSelection()
-                  refetch()
-                }}
-              />
+              <DbSwitcher health={health} onSwitched={onHealthChanged} />
             </div>
             {health.db_kind !== 'live' && health.detected_library_path && (
               <div className="meta detected">
@@ -92,57 +111,74 @@ export default function App() {
               </div>
             )}
           </>
-        ) : (
-          <div className="meta">
-            <span className="muted">health unavailable</span>
-          </div>
         )}
       </header>
 
-      <div className="toolbar">
-        <input
-          type="search"
-          placeholder="Filter by title, artist, album, genre, comment…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button onClick={refetch} disabled={loading}>
-          {loading ? 'Loading…' : 'Reload'}
-        </button>
-        <span className="muted">
-          {filtered.length} shown{search ? ` / ${tracks.length} loaded` : ''}
-          {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
-        </span>
-      </div>
+      {rekordboxRunning && <RekordboxBanner onRecheck={recheck} busy={rechecking} />}
 
-      {error && <p className="error">Failed to load tracks: {error}</p>}
+      {health && health.db_kind === 'none' ? (
+        <NoLibrary health={health} onOpened={onHealthChanged} onRetry={recheck} />
+      ) : (
+        <>
+          <div className="toolbar">
+            <input
+              type="search"
+              placeholder="Filter by title, artist, album, genre, comment…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button onClick={refetch} disabled={loading}>
+              {loading ? 'Loading…' : 'Reload'}
+            </button>
+            <button className="secondary" onClick={() => setShowBackups((s) => !s)}>
+              {showBackups ? 'Hide backups' : 'Backups'}
+            </button>
+            <span className="muted">
+              {filtered.length} shown{search ? ` / ${tracks.length} loaded` : ''}
+              {selectedIds.size > 0 && ` · ${selectedIds.size} selected`}
+            </span>
+          </div>
 
-      {!error && (
-        <TrackTable
-          tracks={filtered}
-          selectedIds={selectedIds}
-          onToggle={toggle}
-          onToggleAll={toggleAll}
-        />
+          <RestorePanel
+            open={showBackups}
+            rekordboxRunning={rekordboxRunning}
+            onRestored={onHealthChanged}
+          />
+
+          {error && <p className="error">Failed to load tracks: {error}</p>}
+
+          {!error && (
+            <TrackTable
+              tracks={filtered}
+              selectedIds={selectedIds}
+              onToggle={toggle}
+              onToggleAll={toggleAll}
+            />
+          )}
+
+          {selectedTracks.length === 1 && (
+            <AnalyzePanel
+              key={selectedTracks[0].id}
+              track={selectedTracks[0]}
+              rekordboxRunning={rekordboxRunning}
+              onSaved={refetch}
+            />
+          )}
+
+          {selectedTracks.length >= 2 && (
+            <BatchPanel
+              tracks={selectedTracks}
+              rekordboxRunning={rekordboxRunning}
+              onSaved={refetch}
+              onClear={clearSelection}
+            />
+          )}
+        </>
       )}
 
-      {selectedTracks.length === 1 && (
-        <AnalyzePanel
-          key={selectedTracks[0].id}
-          track={selectedTracks[0]}
-          rekordboxRunning={rekordboxRunning}
-          onSaved={refetch}
-        />
-      )}
-
-      {selectedTracks.length >= 2 && (
-        <BatchPanel
-          tracks={selectedTracks}
-          rekordboxRunning={rekordboxRunning}
-          onSaved={refetch}
-          onClear={clearSelection}
-        />
-      )}
+      <footer className="app-footer">
+        Rekordbox Comment Tagger{health ? ` v${health.version}` : ''}
+      </footer>
     </div>
   )
 }

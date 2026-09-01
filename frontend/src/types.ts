@@ -10,12 +10,43 @@ export interface Track {
 }
 
 export interface Health {
-  db_path: string
-  db_kind: 'live' | 'custom'
+  version: string
+  db_path: string | null
+  db_kind: 'live' | 'custom' | 'none'
   detected_library_path: string | null
   rekordbox_running: boolean
-  track_count: number
-  local_track_count: number
+  track_count: number | null
+  local_track_count: number | null
+}
+
+export interface BackupRecent {
+  title: string
+  updated_at: string
+}
+
+export interface BackupInfo {
+  name: string
+  taken: string | null
+  size: number
+  wal_size: number
+  shm_size: number
+  usn: number | null
+  track_count: number | null
+  tagged_count: number | null
+  recent: BackupRecent[]
+  is_prerestore: boolean
+  error: string | null
+}
+
+export interface BackupsResponse {
+  backup_dir: string
+  live: {
+    db_path: string | null
+    usn: number | null
+    track_count: number | null
+    tagged_count: number | null
+  }
+  backups: BackupInfo[]
 }
 
 export interface BandResult {

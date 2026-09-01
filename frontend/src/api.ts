@@ -2,6 +2,7 @@ import type {
   AnalyzeResponse,
   BatchAnalyzeItem,
   BatchCommentResult,
+  BackupsResponse,
   CommentUpdateResult,
   Health,
   Track,
@@ -65,6 +66,14 @@ export function updateComment(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+}
+
+export function fetchBackups(): Promise<BackupsResponse> {
+  return getJSON<BackupsResponse>('/api/backups')
+}
+
+export function restoreBackup(name: string): Promise<{ restored_from: string; prerestore_snapshot: string } & Health> {
+  return getJSON('/api/backups/' + encodeURIComponent(name) + '/restore', { method: 'POST' })
 }
 
 /** Batch analyse; yields one record per track as the NDJSON stream arrives. */

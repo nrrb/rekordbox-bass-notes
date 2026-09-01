@@ -54,12 +54,13 @@ toward distribution:
 - **Human errors** — `humanize()` maps the common failures to plain `detail`
   sentences.
 - **One-process ready** — FastAPI serves `frontend/dist` at `/` when a build is
-  present (skipped in dev).
+  present (skipped in dev); CORS opens to `*` when `sys.frozen`.
 - **Runtime config** — `backend/runtime.py`: `db_path` + `backup_dir` persisted;
-  precedence env → `config.json` → default.
-
-UI is being iterated separately; the panels below (first-run screen, restore
-panel, Rekordbox banner) are pending and best folded into that work.
+  precedence env → `config.json` → default. `__version__` in `/api/health`.
+- **Resilient UI** — starts even with no database (`NoLibrary` locate screen);
+  a **Backups** panel (list + inline restore); a persistent **Rekordbox-running
+  banner**; `/api/health` **polled every 5 s** so opening Rekordbox mid-session
+  is noticed; version in the footer.
 
 ---
 
@@ -100,9 +101,7 @@ Each subsection is flagged: ✅ done · 🟡 partly done · ⬜ not started.
 
 - ✅ FastAPI serves `frontend/dist` at `/` (`sys._MEIPASS`-aware), `/api/*` first,
   skipped when no build is present.
-- ⬜ **CORS in frozen mode**: `allow_origins` is hardcoded to
-  `http://localhost:5173`. In the packaged app the SPA is same-origin on
-  `127.0.0.1:<port>`, so relax/disable CORS when `sys.frozen`.
+- ✅ CORS relaxed to `*` when `sys.frozen` (same-origin in the packaged app).
 - ⬜ Build the SPA into the bundle (part of M4).
 
 ### 2. Launcher — ⬜
@@ -140,50 +139,55 @@ Runtime deps after M4: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned
   and the restore endpoint write it.
 - ✅ Backups default to **`~/Music/RekordboxTagger Backups/`** when frozen
   (`backend/backups/` in dev).
-- ⬜ **Logging** — set up file logging to `~/Library/Logs/RekordboxTagger/` (for
-  "Copy diagnostics"). Nothing writes there yet.
-- ⬜ Persist an **app version** / `last_seen_version` for the update check.
+- ✅ `backend/__init__.py` `__version__` — in `/api/health` and the UI footer.
+- ⬜ **File logging** to `~/Library/Logs/RekordboxTagger/` (for "Copy
+  diagnostics"). Nothing writes there yet.
+- ⬜ `last_seen_version` in `config.json` for the update-check banner (M6).
 
 ### 5. First-run library setup — 🟡
 
-- ✅ Auto-locates the library (`detect_library_path()`); `humanize()` turns
-  "not found" into a plain message; `/api/health` reports `db_kind` and
-  `detected_library_path`.
-- ⬜ **Frontend "can't find library" state** — when health has no `db_path`,
-  show a locate-your-`master.db` screen instead of a broken table.
-- ⬜ **Native file dialog** — `DbSwitcher` has a path *text field*; in the
-  packaged app wire it to `window.create_file_dialog()` (pywebview).
+- ✅ Auto-locates the library; `humanize()` turns "not found" into a plain
+  message; the backend **starts even with no DB** (`_state["db"] = None`), health
+  returns `db_kind: "none"` / `db_path: null`, DB-needing endpoints → 503.
+- ✅ **`NoLibrary` screen** — when `db_kind === "none"` the app shows a
+  locate-your-`master.db` panel (detected-path "Open it", a path field, and
+  "Retry auto-detect") instead of a broken table.
+- ⬜ **Native file dialog** — the path fields (`NoLibrary`, `DbSwitcher`) are
+  text inputs; in the packaged app wire them to `window.create_file_dialog()`
+  (pywebview).
 - ⬜ Confirm the v5 / v6 / v7 directory variants all resolve (pyrekordbox
   handles 6/7; check 5).
 
-### 6. Restore in the UI — 🟡
+### 6. Restore in the UI — ✅
 
-- ✅ `GET /api/backups` (listing + live-DB stats via `RekordboxDB.stats()`) and
-  ✅ `POST /api/backups/{name}/restore` (guarded, snapshots first, reopens).
-- ⬜ **Restore panel** — a "Backups" screen; each row shows what's inside (USN,
-  track count, tokens written, recent edits) so a non-technical user can pick.
+- `GET /api/backups` (listing + live-DB stats) and `POST /api/backups/{name}/restore`
+  (guarded: 503 no DB / 409 Rekordbox open; snapshots first, reopens).
+- **`RestorePanel`** — a "Backups" toggle in the toolbar; each row shows name,
+  time, size, USN, track/tagged counts and the last edit, with an inline
+  "restore this → Confirm restore" (disabled while Rekordbox runs). Success shows
+  the pre-restore snapshot name and refreshes the library.
 
 ### 7. Error surfacing — ✅
 
 `humanize()` in `main.py` maps library-not-found, Rekordbox-open, audio-moved,
 decode/format failure, and unsupported-DB-version to plain sentences in the API
-`detail`; applied to analyze, batch-stream (per track), both write paths, and the
-DB switch. Frontend renders `detail` as-is. (Raw detail → logs once §4 logging
-lands.)
+`detail`; applied to analyze, batch-stream (per track), both write paths, the DB
+switch, and restore. Frontend renders `detail` as-is. (Raw detail → logs once §4
+logging lands.)
 
-### 8. Rekordbox-running UX — ⬜
+### 8. Rekordbox-running UX — ✅
 
-`/api/health` already reports `rekordbox_running`; the header shows a status word
-and Save is disabled. ⬜ Turn it into a **persistent top banner with a Re-check
-button** so it's unmissable.
+- `useHealth` **polls `/api/health` every 5 s**, so opening Rekordbox after the
+  app is already running is picked up (and closing it re-enables Save).
+- **`RekordboxBanner`** — a persistent amber banner while Rekordbox runs, with an
+  "I've quit it — re-check" button (also forces a health refresh).
 
-### 9. App polish — ⬜
+### 9. App polish — 🟡
 
-- **Icon** — a `.icns` (a `.png` run through `iconutil` / an online converter);
-  referenced from the PyInstaller spec / `Info.plist`.
-- **About / version** — a single `__version__` (e.g. `backend/__init__.py`),
-  surfaced in `/api/health` and shown in the UI footer; drives the update check.
-- **Window title** — `Info.plist` `CFBundleName` + the SPA `<title>`.
+- ✅ **About / version** — `__version__` in `/api/health` + a UI footer.
+- ✅ **Window title** — the SPA `<title>` (`Info.plist` `CFBundleName` comes with
+  the PyInstaller `--name` in M4).
+- ⬜ **Icon** — a `.icns` for the PyInstaller spec / `Info.plist` (M4).
 
 ---
 
@@ -321,17 +325,17 @@ backup endpoints, and the static mount.
 
 | # | Milestone | Left to do | Rough effort |
 |---|---|---|---|
-| M0 | One process | `launcher.py` + pywebview, `127.0.0.1:0` port, graceful shutdown, single-instance lock, relax CORS when `sys.frozen` | ~0.5 day |
+| M0 | One process | `launcher.py` + pywebview, `127.0.0.1:0` port, graceful shutdown, single-instance lock | ~0.5 day |
 | M1 | Deps | bundle `ffmpeg` (`imageio-ffmpeg`) for M4A/AAC/ALAC; pin the rest of `requirements.txt` | ~0.5 day |
-| M2 | Config / first run | file logging to `~/Library/Logs/RekordboxTagger/`; `__version__`; frontend "can't find library" screen; native file dialog for "use a different database…" | ~0.5–1 day (UI) |
-| M3 | UI panels | restore panel; persistent Rekordbox-running banner; icon + About/version footer | ~1 day (UI) |
-| M4 | Package | PyInstaller spec that runs frozen (sqlcipher3 / ffmpeg / data-file iterations); `scripts/build_app.sh` → `.dmg` (arm64) | ~1–2 days |
+| M2 | Loose ends | file logging to `~/Library/Logs/RekordboxTagger/`; native file dialog for the path fields; check RB v5 path variant | ~0.5 day |
+| M3 | ~~UI panels~~ | ✅ done — restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer | — |
+| M4 | Package | `.icns` icon; PyInstaller spec that runs frozen (sqlcipher3 / ffmpeg / data-file iterations); `scripts/build_app.sh` → `.dmg` (arm64) | ~1–2 days |
 | M5 | Field test | clean-machine / friend's-Mac run; fix what breaks; release to 1–2 people | ~0.5–1 day + iteration |
-| M6 | Ship | wider release; in-app update-check banner | ~0.5 day |
+| M6 | Ship | wider release; in-app update-check banner (`last_seen_version`) | ~0.5 day |
 | M7 *(optional)* | Signing | Developer ID sign + notarize + staple (`.app` and `.dmg`) | ~0.5 day one-time |
 
-Total remaining to a shareable v1: roughly **3.5–5 focused days**, most of it in
-M4. M2/M3 are largely UI and can ride along with the UI tweaking already underway.
+Total remaining to a shareable v1: roughly **3–4 focused days**, most of it in
+M4 (PyInstaller).
 
 ---
 

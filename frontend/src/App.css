@@ -129,6 +129,37 @@ header h1 {
   opacity: 0.5;
   cursor: default;
 }
+.toolbar button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* generic button used in NoLibrary / RestorePanel / banner */
+.no-library button,
+.restore-panel button:not(.linklike),
+.rb-banner button {
+  padding: 6px 12px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #0b1020;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.no-library button:disabled,
+.restore-panel button:disabled,
+.rb-banner button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.no-library button.secondary,
+.restore-panel button.secondary {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
 
 .muted {
   color: var(--muted);
@@ -457,4 +488,93 @@ table.batch td {
   font-size: 12px;
   color: var(--muted);
   margin-bottom: 2px;
+}
+
+/* --- Rekordbox-running banner --- */
+.rb-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(224, 163, 74, 0.5);
+  background: rgba(224, 163, 74, 0.12);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* --- no-library screen --- */
+.no-library {
+  margin-top: 18px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  max-width: 640px;
+}
+.no-library h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+.no-library-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+.db-badge.db-none {
+  background: rgba(224, 100, 90, 0.2);
+  color: var(--error);
+  border: 1px solid rgba(224, 100, 90, 0.5);
+}
+
+/* --- restore panel --- */
+.restore-panel {
+  margin-top: 12px;
+}
+.backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.backup-row {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.backup-main code {
+  font-size: 12px;
+}
+.backup-stats {
+  margin-top: 3px;
+}
+.backup-confirm {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.backup-row .tag {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--muted);
+}
+
+/* --- footer --- */
+.app-footer {
+  margin-top: 40px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
 }

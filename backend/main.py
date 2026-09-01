@@ -15,11 +15,14 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import sys
 import threading
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+from . import __version__
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -119,31 +122,43 @@ class DbSwitchRequest(BaseModel):
         return self
 
 
-_state: dict[str, RekordboxDB] = {}
+_state: dict[str, Optional[RekordboxDB]] = {"db": None}
 _swap_lock = threading.Lock()
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    _state["db"] = RekordboxDB()
+    try:
+        _state["db"] = RekordboxDB()
+    except Exception as e:  # noqa: BLE001 - start anyway; the UI shows a locate screen
+        _state["db"] = None
+        print(f"startup: no database open ({type(e).__name__}: {e})")
     try:
         yield
     finally:
-        _state["db"].close()
-        _state.clear()
+        cur = _state.get("db")
+        if cur is not None:
+            cur.close()
+        _state["db"] = None
 
 
 app = FastAPI(title="Rekordbox Comment Tagger", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=["*"] if getattr(sys, "frozen", False) else [settings.frontend_origin],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 def db() -> RekordboxDB:
-    return _state["db"]
+    cur = _state.get("db")
+    if cur is None:
+        raise HTTPException(
+            status_code=503,
+            detail="No Rekordbox database is open — choose one from the header.",
+        )
+    return cur
 
 
 def _same_path(a: str, b: Optional[str]) -> bool:
@@ -186,15 +201,26 @@ def _http(exc: Exception) -> HTTPException:
 
 @app.get("/api/health")
 def health() -> dict:
-    d = db()
-    current = str(d.db_path)
     detected = detect_library_path()
-    db_kind = "live" if _same_path(current, detected) else "custom"
-    return {
-        "db_path": current,
-        "db_kind": db_kind,  # "live" (the auto-located library) | "custom"
+    base = {
+        "version": __version__,
         "detected_library_path": detected,
         "rekordbox_running": rekordbox_running(),
+    }
+    d = _state.get("db")
+    if d is None:
+        return {
+            **base,
+            "db_path": None,
+            "db_kind": "none",  # no database open — UI shows the locate screen
+            "track_count": None,
+            "local_track_count": None,
+        }
+    current = str(d.db_path)
+    return {
+        **base,
+        "db_path": current,
+        "db_kind": "live" if _same_path(current, detected) else "custom",
         "track_count": d.count_tracks(),
         "local_track_count": d.count_local_tracks(),
     }
@@ -385,11 +411,14 @@ def update_comment(track_id: str, body: CommentUpdate) -> CommentUpdateResult:
 # --- backups ---------------------------------------------------------------
 @app.get("/api/backups")
 def list_backups_api() -> dict:
-    d = db()
-    try:
-        live = {"db_path": str(d.db_path), **d.stats()}
-    except Exception:  # noqa: BLE001
-        live = {"db_path": str(d.db_path), "usn": None, "track_count": None, "tagged_count": None}
+    d = _state.get("db")
+    if d is None:
+        live = {"db_path": None, "usn": None, "track_count": None, "tagged_count": None}
+    else:
+        try:
+            live = {"db_path": str(d.db_path), **d.stats()}
+        except Exception:  # noqa: BLE001
+            live = {"db_path": str(d.db_path), "usn": None, "track_count": None, "tagged_count": None}
     infos = restore_mod.list_backups()
     return {
         "backup_dir": runtime.backup_dir,
@@ -417,6 +446,9 @@ def list_backups_api() -> dict:
 def restore_backup_api(name: str) -> dict:
     """Restore a backup over the live database. Rekordbox must be closed. The
     current DB is snapshotted first (``*_prerestore.db``), so this is reversible."""
+    old = _state.get("db")
+    if old is None:
+        raise HTTPException(status_code=503, detail="Open a database before restoring a backup.")
     if rekordbox_running():
         raise HTTPException(status_code=409, detail="Quit Rekordbox before restoring a backup.")
     infos = restore_mod.list_backups()
@@ -428,7 +460,6 @@ def restore_backup_api(name: str) -> dict:
         raise HTTPException(status_code=422, detail=str(e)) from e
 
     with _swap_lock:
-        old = _state["db"]
         live = old.db_path
         try:
             with old._lock:

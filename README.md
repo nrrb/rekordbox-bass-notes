@@ -87,12 +87,16 @@ Open <http://localhost:5173>.
    result table → **Save M to Rekordbox** (M = tracks whose comment actually
    changes) → confirm dialog listing every change → one atomic write, one
    backup.
-4. Save is disabled while Rekordbox is running.
+4. Save is disabled while Rekordbox is running — a banner appears, and the app
+   re-checks every 5 s (or on the banner's button), so quitting Rekordbox
+   mid-session re-enables it without a reload.
+5. **Backups** (toolbar) lists every backup with what's inside it and a
+   one-click restore (guarded, snapshots the current library first).
 
 It opens **your real Rekordbox library** (auto-located) by default. The header
-shows which database is active (**MY LIBRARY** / **CUSTOM DATABASE**); use
-**use a different database…** there to point at another `master.db`. Quit
-Rekordbox before saving.
+shows which database is active (**MY LIBRARY** / **CUSTOM DATABASE**), or a
+locate screen if none is found; **use a different database…** points at another
+`master.db`. Quit Rekordbox before saving.
 
 ---
 
@@ -196,7 +200,7 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/health` | `{ db_path, db_kind (live|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
+| `GET` | `/api/health` | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, … }` — the UI polls this every 5 s |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
 | `POST` | `/api/tracks/{id}/analyze` | Analyse one track + proposed comment. **No write.** 404 / 422 (no local file) / 500 |
@@ -224,8 +228,10 @@ backend/
   backups/        auto-written backups (gitignored)
 frontend/src/
   App.tsx, api.ts, types.ts
-  hooks/          useTracks, useAnalyze(+Batch), useUpdateComment(+Batch)
+  hooks/          useHealth (5 s poll), useTracks, useBackups,
+                  useAnalyze(+Batch), useUpdateComment(+Batch)
   components/     TrackTable, AnalyzePanel, BatchPanel, CommentDiff,
-                  ConfirmDialog, BatchConfirmDialog, DbSwitcher
+                  ConfirmDialog, BatchConfirmDialog, DbSwitcher,
+                  NoLibrary, RekordboxBanner, RestorePanel
 config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
 ```

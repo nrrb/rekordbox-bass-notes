@@ -203,7 +203,7 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 
 | Method | Path                          | Body                          | Returns |
 |--------|-------------------------------|-------------------------------|---------|
-| GET    | `/api/health`                 | –                             | `{ db_path, db_kind (live|custom), detected_library_path, rekordbox_running, track_count, local_track_count }` |
+| GET    | `/api/health`                 | –                             | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, track_count, local_track_count }` — `none` + nulls when no DB is open; polled by the UI every 5 s |
 | GET    | `/api/tracks?search=&limit=`  | –                             | `[{ id, title, artist, album, genre, comment, folder_path, has_file }]` — **local-file tracks only** |
 | GET    | `/api/tracks/{id}`            | –                             | single track (any id, incl. streaming) |
 | POST   | `/api/tracks/{id}/analyze`    | –                             | `{ id, title, artist, audio_path, sample_rate, duration_sec, bands:[…], token, current_comment, proposed_comment, merge_action, existing_tokens }` — **no write**; 404 / 422 (no local file) / 500 |
@@ -214,7 +214,8 @@ Env-configurable: `REKORDBOX_DB_PATH` / `USE_LIVE_LIBRARY`, `RESULT_LIMIT`,
 | GET    | `/api/backups`               | –                              | `{ backup_dir, live:{db_path,usn,track_count,tagged_count}, backups:[{name,taken,size,wal_size,shm_size,usn,track_count,tagged_count,recent,is_prerestore,error}] }` |
 | POST   | `/api/backups/{name}/restore`| –                              | Guarded (409 if Rekordbox open) → snapshot current DB → `apply_restore` → reopen. Returns `{restored_from, prerestore_snapshot, …health}`. |
 
-- Single shared DB instance opened at startup, closed on shutdown (`lifespan`).
+- Single shared DB instance; `lifespan` starts the server **even if it can't open
+  one** (`_state["db"] = None` → health `db_kind:"none"`, DB endpoints → 503).
 - **`backend/runtime.py`** — `RuntimeConfig {db_path, backup_dir}` loaded from
   `config.json` (env > file > default) at import; `/api/db/switch` and the restore
   endpoint write it. `settings` keeps the static/env knobs.
