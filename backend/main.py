@@ -1,10 +1,10 @@
 """FastAPI app.
 
-Read-only endpoints:
   GET  /api/health
   GET  /api/tracks?search=&limit=
   GET  /api/tracks/{id}
   POST /api/tracks/{id}/analyze   -- audio analysis + proposed comment (no write)
+  PUT  /api/tracks/{id}/comment   -- write the comment (backup + commit)
 
 Run:  .venv/bin/uvicorn backend.main:app --reload --port 8000
 """
@@ -16,10 +16,11 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, model_validator
 
 from .analysis import BandResult, analyze_file, merge_token
 from .config import settings
-from .db import RekordboxDB, Track, rekordbox_running
+from .db import RekordboxDB, RekordboxRunningError, Track, TrackNotFoundError, rekordbox_running
 
 
 @dataclass
@@ -36,6 +37,28 @@ class AnalyzeResponse:
     proposed_comment: str
     merge_action: str  # "replaced" | "appended"
     existing_tokens: int
+
+
+class CommentUpdate(BaseModel):
+    """Exactly one of `token` (merge into the existing comment) or `comment`
+    (replace it outright) must be provided."""
+
+    token: Optional[str] = None
+    comment: Optional[str] = None
+
+    @model_validator(mode="after")
+    def _exactly_one(self) -> "CommentUpdate":
+        if (self.token is None) == (self.comment is None):
+            raise ValueError("provide exactly one of 'token' or 'comment'")
+        return self
+
+
+@dataclass
+class CommentUpdateResult:
+    id: str
+    old_comment: str
+    new_comment: str
+    backup_path: str
 
 _state: dict[str, RekordboxDB] = {}
 
@@ -118,4 +141,32 @@ def analyze_track(track_id: str) -> AnalyzeResponse:
         proposed_comment=merged.comment,
         merge_action=merged.action,
         existing_tokens=merged.existing_tokens,
+    )
+
+
+@app.put("/api/tracks/{track_id}/comment", response_model=CommentUpdateResult)
+def update_comment(track_id: str, body: CommentUpdate) -> CommentUpdateResult:
+    """Write the track's comment. Requires Rekordbox to be closed; backs up
+    master.db first. `token` merges into the existing comment (see
+    analysis.merge_token); `comment` replaces it outright."""
+    track = db().get_track(track_id)
+    if track is None:
+        raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
+
+    if body.token is not None:
+        new_comment = merge_token(track.comment, body.token).comment
+    else:
+        new_comment = body.comment or ""
+
+    try:
+        old, new, backup_path = db().set_comment(track_id, new_comment)
+    except RekordboxRunningError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except TrackNotFoundError:
+        raise HTTPException(status_code=404, detail=f"No track with ID {track_id}")
+    except Exception as e:  # noqa: BLE001 - surface commit failures to the client
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}") from e
+
+    return CommentUpdateResult(
+        id=track_id, old_comment=old, new_comment=new, backup_path=str(backup_path)
     )

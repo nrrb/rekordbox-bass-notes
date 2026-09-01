@@ -274,10 +274,22 @@ writertest/
    **Calibration done here** (ahead of step 6): per-band `dbfs_scale` set from the
    p5/p95 of a 117-track batch — L −46→−18, M −23→−7, H −20→−9 — giving a full
    0–9 digit spread on L and H (M stays top-heavy, matching the real distribution).
-4. **`POST /analyze` + AnalyzePanel** — full analyze-and-preview loop, still no writes.
-5. **Write path** — `PUT /api/tracks/{id}/comment` with `merge_token`, Rekordbox-running
-   guard, timestamped `master.db` backup, `commit()`. Test end-to-end on the copy:
-   reopen the DB and confirm the token landed in `Commnt`.
+4. **`POST /analyze` + AnalyzePanel** ✅ — full analyze-and-preview loop, no writes.
+5. **Write path** ✅ — `PUT /api/tracks/{id}/comment` (`token` merges via `merge_token`,
+   `comment` replaces outright). `RekordboxDB.set_comment`: pre-flight
+   `rekordbox_running()` guard (409) → WAL-checkpoint + `.db`/`-wal`/`-shm` backup to
+   `backend/backups/` → capture old `Commnt` → mutate → `commit()` (which re-checks
+   Rekordbox itself; caught as a second 409 path). Confirmed by reading pyrekordbox's
+   source: plain attribute assignment is queued by `Base.__setattr__` and `commit()`
+   bumps the row's `rb_local_usn` + the global `agentRegistry` USN before the SQL
+   commit — no manual bookkeeping needed. Verified end-to-end: 422 (missing/both
+   body fields), 404 (unknown id), 200 write with correct `old`/`new`/`backup_path`,
+   persistence on a **freshly reopened** connection, `agentRegistry.localUpdateCount`
+   +1 and `rb_local_usn`/`updated_at` bumped on the row, 409 via a monkeypatched guard
+   (both at the `RekordboxDB` and FastAPI-route layers) with the comment left
+   untouched. Tested against `sample/master.db`; a real pre-existing comment
+   (a YouTube link) was incidentally overwritten mid-test and restored from the
+   run's own backup.
 6. **Go live** — `dbfs_scale` already calibrated (step 3); re-run `backend/calibrate.py`
    only if re-tuning. Point `REKORDBOX_DB_PATH` at the real `master.db`, quit Rekordbox,
    do one real edit, reopen Rekordbox, verify the comment shows on the track. Record the
