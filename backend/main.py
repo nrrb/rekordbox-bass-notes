@@ -363,3 +363,22 @@ def update_comment(track_id: str, body: CommentUpdate) -> CommentUpdateResult:
     return CommentUpdateResult(
         id=track_id, old_comment=old, new_comment=new, backup_path=str(backup_path)
     )
+
+
+# --- static SPA (packaged / one-process mode) --------------------------------
+# Declared last so /api/* routes take precedence. In dev the frontend is served
+# by `npm run dev`; this mount only matters when uvicorn serves the built app.
+def _frontend_dist() -> Optional[str]:
+    import sys
+    from pathlib import Path
+
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    dist = base / "frontend" / "dist"
+    return str(dist) if (dist / "index.html").is_file() else None
+
+
+_dist = _frontend_dist()
+if _dist:
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=_dist, html=True), name="spa")
