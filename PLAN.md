@@ -143,17 +143,36 @@ Env-configurable: `REKORDBOX_DB_PATH`, `RESULT_LIMIT`, `AUDIO_SR` (500),
 `PRESET_LETTER` (`B`), `FILTER_ORDER` (8), `COMMENT_SEP` (`" "`), `BACKUP_DIR`.
 
 ### `backend/db.py` — `pyrekordbox` wrapper
-- `open_db()` → `Rekordbox6Database(path=settings.DB_PATH)` (defaults to auto-detect).
-- `list_tracks()` → iterate `db.get_content()`, return
-  `{ id, title, artist, album, comment, folder_path, has_file }`.
-- `get_track(id)` → single row.
-- `set_comment(id, new_comment)`:
-  1. Refuse with **409** if a Rekordbox process is running (`psutil` / `pgrep`).
-  2. Write a timestamped backup of `master.db` to `backend/backups/`.
-  3. `content = db.get_content(ID=id)`; capture `old = content.Commnt`.
-  4. `content.Commnt = new_comment`.
-  5. `db.commit()`.
-  6. Return `{ id, old_comment, new_comment }`.
+- `RekordboxDB(db_path=None)` → `Rekordbox6Database`; `.db_path` resolved from the
+  engine URL, for backups.
+- `list_tracks()` → local-file tracks only (see Frontend §1).
+- `get_track(id)` / `_get_raw_content(id)` → snapshot / live ORM row.
+- `count_tracks()`, `count_local_tracks()`.
+- `backup()` → `PRAGMA wal_checkpoint(FULL)`, copy `master.db` + `-wal`/`-shm` to
+  `backend/backups/master_<ts µs>.db`, then prune to `settings.backup_keep` (default
+  20; `BACKUP_KEEP=0` disables). Runs *before* the mutation, so a failed copy aborts
+  the write.
+- `set_comment(id, new_comment) -> (old, new, backup_path)`:
+  1. **409** pre-flight if `rekordbox_running()` (psutil).
+  2. `backup()`.
+  3. capture `old = content.Commnt`; `content.Commnt = new_comment`.
+  4. `db.commit()` — pyrekordbox re-checks Rekordbox (caught → rollback → 409) and
+     bumps `rb_local_usn` + the global `agentRegistry` USN.
+  5. `PRAGMA quick_check` → `DatabaseIntegrityError` (message names the backup) if
+     not `ok`.
+- Exceptions: `RekordboxRunningError` (409), `TrackNotFoundError` (404),
+  `DatabaseIntegrityError` (500).
+
+### `backend/restore.py` — CLI (no HTTP surface)
+- `python -m backend.restore` — lists backup sets newest-first, each with: filename,
+  time taken + "N ago", `.db`/`-wal`/`-shm` sizes, and **from inside the file**:
+  `agentRegistry` USN, track count, count of tracks carrying a `B:l#m#h#` token, and
+  the 3 most-recently-edited track titles + `updated_at`. Also prints the live DB's
+  same stats for comparison.
+- `python -m backend.restore <index|name-substring> [--yes]` — guards on
+  `rekordbox_running()`, snapshots the current live DB to `*_prerestore.db` (restore
+  is itself reversible), copies the chosen backup over the live file, deletes the
+  live `-wal`/`-shm`. Requires the backend server stopped.
 
 ### `backend/analysis.py` — audio analysis
 - `analyze_file(path) -> AnalysisResult`:
@@ -239,11 +258,14 @@ writertest/
 ├── README.md                 # setup + run steps
 ├── .gitignore
 ├── backend/
-│   ├── pyproject.toml         # fastapi, uvicorn, pyrekordbox, sqlcipher3-wheels,
+│   ├── requirements.txt       # fastapi, uvicorn, pyrekordbox, sqlcipher3-wheels,
 │   │                          #   psutil, numpy, scipy, librosa, soundfile
 │   ├── config.py              # env-configurable params
-│   ├── db.py                  # pyrekordbox wrapper
+│   ├── db.py                  # pyrekordbox wrapper: reads, backup(), set_comment()
 │   ├── analysis.py            # decode + band-pass + dBFS + token + merge (+ CLI)
+│   ├── calibrate.py           # batch dBFS distribution report (CLI)
+│   ├── restore.py             # list / restore master.db backups (CLI)
+│   ├── inspect_db.py          # sanity-check a master.db copy (CLI)
 │   ├── main.py                # FastAPI app + routes
 │   └── backups/               # auto-written master.db backups (gitignored)
 └── frontend/
@@ -252,6 +274,7 @@ writertest/
     └── src/
         ├── App.tsx
         ├── api.ts
+        ├── types.ts
         ├── hooks/
         │   ├── useTracks.ts
         │   ├── useAnalyze.ts
@@ -260,9 +283,11 @@ writertest/
             ├── TrackTable.tsx
             ├── AnalyzePanel.tsx
             ├── CommentDiff.tsx
-            ├── CommentEditor.tsx
             └── ConfirmDialog.tsx
 ```
+
+_(No `CommentEditor.tsx` — free-text comment editing was in the original sketch but
+the core loop is analyse → confirm → save; add it later if wanted.)_
 
 ---
 
@@ -324,11 +349,37 @@ for fill-in. Opus fast mode is a good fit for steps 3 and 5 if available.
 
 ---
 
+## Database safety (implemented)
+
+- **Backup before every write** — `RekordboxDB.backup()` runs inside `set_comment()`
+  *before* the row is touched: WAL-checkpoint, then copy `master.db` + `-wal` + `-shm`
+  to `backend/backups/master_<ts>.db`. `shutil.copy2` raises on failure, so **no
+  backup ⇒ no write**.
+- **Retention** — after each backup, sets older than `settings.backup_keep` (default
+  20; `BACKUP_KEEP=0` keeps all) are pruned, sidecars included.
+- **Guards** — pre-flight `rekordbox_running()` → 409; pyrekordbox's own check in
+  `commit()` → rollback → 409 (covers the launch-mid-request race); UI disables Save
+  when Rekordbox is running; confirm dialog before any write.
+- **Post-write `PRAGMA quick_check`** — not `ok` ⇒ `DatabaseIntegrityError` (500)
+  whose message names the pre-write backup to restore. No auto-restore (a rare,
+  ambiguous signal — the user decides).
+- **Rollback** — any `commit()` exception discards the in-memory change.
+- **Restore** — `python -m backend.restore` lists backups with contents (USN, track
+  count, tokens written, recent edits) to pick from; restoring snapshots the current
+  live DB first (`*_prerestore.db`), so it is itself reversible.
+- **Scope** — one column (`Commnt`), one row per request. No deletes, no schema
+  changes, no bulk ops.
+
+Still not covered: same-disk backups only (no off-machine copy); no cross-process
+lock (two writers, or two concurrent `PUT`s on the shared session, are unguarded —
+single-user POC assumption); Rekordbox cloud/library sync can touch `master.db`
+independently and isn't detected (pause it during use).
+
 ## Risks & caveats
 
 - **`pyrekordbox` write support is officially "experimental."** `commit()` handles the
-  `usn` / `rb_local_usn` bookkeeping, but keep backups and verify in-app after each
-  write.
+  `usn` / `rb_local_usn` bookkeeping (verified against source + empirically), but keep
+  backups and verify in-app after each write.
 - **Rekordbox locking / corruption** — never write while the app is open; the backend
   enforces this and backs up first. Pause Rekordbox cloud/library sync during testing.
 - **dBFS → digit calibration** — done (step 3): per-band `dbfs_scale` from a 117-track
@@ -346,7 +397,8 @@ for fill-in. Opus fast mode is a good fit for steps 3 and 5 if available.
   analyze disabled.
 - **Rekordbox 6 vs 7** — both use `Rekordbox6Database`; on a very new v7 build, confirm
   `pyrekordbox` recognizes the DB (health endpoint reports this).
-- **Key availability** — if `download-key` cannot fetch the cached key, it must be
-  extracted from an installed Rekordbox; this is the one setup step that can block.
+- **Key availability** — `pyrekordbox 0.4.4` resolves the SQLCipher key automatically
+  (confirmed). If a future/live DB errors on decrypt, upgrade `pyrekordbox` or pass
+  `key=` explicitly.
 - Scope is deliberately limited: the `Commnt` field, one track at a time, no auth,
   local-only. No bulk edit.

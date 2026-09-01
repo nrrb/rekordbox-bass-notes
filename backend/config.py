@@ -82,6 +82,9 @@ class Settings:
             "BACKUP_DIR", str(_REPO_ROOT / "backend" / "backups")
         )
     )
+    # keep at most this many backup sets (master.db + -wal/-shm); oldest pruned
+    # after each new backup. 0 disables pruning (keep everything).
+    backup_keep: int = field(default_factory=lambda: _i("BACKUP_KEEP", 20))
 
 
 settings = Settings()

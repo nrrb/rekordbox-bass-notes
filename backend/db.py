@@ -17,8 +17,8 @@ from __future__ import annotations
 
 import os
 import shutil
-import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -36,6 +36,10 @@ class RekordboxRunningError(RuntimeError):
 
 class TrackNotFoundError(KeyError):
     """No track with the given ID."""
+
+
+class DatabaseIntegrityError(RuntimeError):
+    """A post-write ``PRAGMA quick_check`` did not return 'ok'."""
 
 
 @dataclass
@@ -125,8 +129,11 @@ class RekordboxDB:
         return res if isinstance(res, DjmdContent) else res.first()
 
     # ----------------------------------------------------------------- writes
+    BACKUP_TS_FMT = "%Y%m%dT%H%M%S_%f"  # microseconds -> no same-second collisions
+
     def backup(self) -> Path:
-        """Checkpoint the WAL and copy master.db (+ -wal/-shm) to backup_dir.
+        """Checkpoint the WAL and copy master.db (+ -wal/-shm) to backup_dir,
+        then prune old backup sets down to ``settings.backup_keep``.
 
         master.db runs in WAL mode: a plain copy of the main file can miss
         recent writes sitting in the -wal sidecar. Checkpointing folds those
@@ -140,24 +147,40 @@ class RekordboxDB:
 
         out_dir = Path(settings.backup_dir)
         out_dir.mkdir(parents=True, exist_ok=True)
-        ts = time.strftime("%Y%m%dT%H%M%S")
+        ts = datetime.now().strftime(self.BACKUP_TS_FMT)
         dest = out_dir / f"{self.db_path.stem}_{ts}{self.db_path.suffix}"
         shutil.copy2(self.db_path, dest)
         for suffix in ("-wal", "-shm"):
             side = self.db_path.with_name(self.db_path.name + suffix)
             if side.exists():
                 shutil.copy2(side, dest.with_name(dest.name + suffix))
+        self._prune_backups()
         return dest
+
+    def _prune_backups(self) -> None:
+        """Keep only the newest ``settings.backup_keep`` backup sets."""
+        keep = settings.backup_keep
+        if keep <= 0:
+            return
+        out_dir = Path(settings.backup_dir)
+        mains = sorted(out_dir.glob(f"{self.db_path.stem}_*{self.db_path.suffix}"))
+        for main in mains[:-keep]:
+            for p in (main, main.with_name(main.name + "-wal"),
+                      main.with_name(main.name + "-shm")):
+                p.unlink(missing_ok=True)
 
     def set_comment(self, track_id: str, new_comment: str) -> tuple[str, str, Path]:
         """Set ``Commnt`` on a track and commit. Returns (old, new, backup_path).
 
         Order: refuse-if-running guard -> backup -> capture old -> mutate ->
-        commit (which itself re-checks Rekordbox and bumps USN bookkeeping).
+        commit (which itself re-checks Rekordbox and bumps USN bookkeeping) ->
+        PRAGMA quick_check.
 
         Raises:
             RekordboxRunningError: Rekordbox is open.
             TrackNotFoundError: no track with ``track_id``.
+            DatabaseIntegrityError: post-write integrity check failed (the
+                pre-write backup path is in the message).
         """
         if rekordbox_running():
             raise RekordboxRunningError("Rekordbox is running; quit it and retry.")
@@ -176,6 +199,14 @@ class RekordboxDB:
             # and commit(). Discard the uncommitted change.
             self._db.session.rollback()
             raise RekordboxRunningError(str(e)) from e
+
+        result = self._db.session.execute(text("PRAGMA quick_check")).scalar()
+        if result != "ok":
+            raise DatabaseIntegrityError(
+                f"post-write PRAGMA quick_check returned {result!r}. The write "
+                f"may have left master.db inconsistent. Restore the pre-write "
+                f"backup: {backup_path}  (python -m backend.restore <name>)"
+            )
         return old, new_comment, backup_path
 
 
