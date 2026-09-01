@@ -8,6 +8,31 @@ setup. This document is only about packaging and shipping.
 
 ---
 
+## Phase 0 — parallel-safe prep (in progress)
+
+Backend-only or purely additive work that hardens the app for other people's
+machines **without disturbing the `npm run dev` + `uvicorn --reload` loop**, so
+UI tweaking can continue alongside it. Decisions locked: app name
+**RekordboxTagger**; **soundfile-only** decoding for now (M4A/AAC/ALAC → a clear
+"format not supported yet" error, `ffmpeg` bundled in M4); **both** backup
+endpoints added now.
+
+| # | Item | Touches | Status |
+|---|------|---------|--------|
+| 0.1 | **Drop librosa** → `soundfile` decode + `scipy.signal.resample_poly` to `AUDIO_SR`. Remove `audio_res_type`. Re-run `calibrate.py`; re-freeze `dbfs_scale` only if the shift is material (keep `PRESET_LETTER=B` — no tokens on a real library yet). Also kills the audioread `DeprecationWarning` noise. | `analysis.py`, `config.py`, `requirements.txt` | — |
+| 0.2 | **Runtime config** — `backend/runtime.py`: a mutable `RuntimeConfig {db_path, backup_dir}` persisted to JSON. Location: `~/Library/Application Support/RekordboxTagger/config.json` when frozen, repo-local `./.rkbx-config.json` (gitignored) in dev. Precedence: env → config.json → default/autodetect. `/api/db/switch` writes it (so the choice is sticky across restart). `backup()` / `restore.py` read `backup_dir` from it. **Dev defaults unchanged.** | `runtime.py` (new), `db.py`, `restore.py`, `main.py` | — |
+| 0.3 | **Human error messages** — map known failures (library not found, Rekordbox open, audio file moved, decode/format failure, key/decrypt failure) to plain sentences in the API `detail`. Frontend already just renders `detail`, so no UI change. | `main.py` (+ small helper) | — |
+| 0.4 | **Backup endpoints** — `GET /api/backups` (JSON of `restore.list_backups()` + live-DB stats) and `POST /api/backups/{name}/restore` (guarded: Rekordbox closed → snapshot current DB → restore → reopen, behind `_swap_lock`). Additive routes; the restore **panel** is separate UI work. | `main.py`, `restore.py` (refactor list to return data) | — |
+| 0.5 | **Additive static mount** — `app.mount("/", StaticFiles(frontend/dist, html=True))` after the `/api` routes, only if the dir exists. Lets `uvicorn` alone serve a built SPA for one-process testing; **`npm run dev` stays the dev path.** | `main.py` | — |
+| 0.6 | Doc sync — PLAN.md (librosa refs, new endpoints, config), README (ffmpeg now optional, endpoints, config.json). | `PLAN.md`, `README.md` | — |
+
+Deferred to the main milestones (they *are* UI, or need a stable UI / dep tree):
+`launcher.py` + pywebview (M0 tail), first-run library picker & "Change library…"
+control (M2, fold into UI work), restore **panel** (M3, fold into UI work),
+PyInstaller spec (M4), `ffmpeg` bundling (M4).
+
+---
+
 ## Goal
 
 - A double-clickable macOS app. No Terminal, no `pip`, no Homebrew.
