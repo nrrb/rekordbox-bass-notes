@@ -14,3 +14,27 @@ export interface Health {
   rekordbox_running: boolean
   track_count: number
 }
+
+export interface BandResult {
+  band: 'L' | 'M' | 'H'
+  hz_low: number
+  hz_high: number
+  rms: number
+  dbfs: number
+  digit: number
+}
+
+export interface AnalyzeResponse {
+  id: string
+  title: string
+  artist: string
+  audio_path: string
+  sample_rate: number
+  duration_sec: number
+  bands: BandResult[]
+  token: string
+  current_comment: string
+  proposed_comment: string
+  merge_action: 'replaced' | 'appended'
+  existing_tokens: number
+}

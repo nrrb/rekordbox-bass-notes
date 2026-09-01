@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import './App.css'
 import { fetchHealth } from './api'
+import { AnalyzePanel } from './components/AnalyzePanel'
 import { TrackTable } from './components/TrackTable'
 import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
@@ -22,6 +23,11 @@ export default function App() {
       `${t.title} ${t.artist} ${t.album} ${t.genre} ${t.comment}`.toLowerCase().includes(q),
     )
   }, [tracks, search])
+
+  const selected = useMemo(
+    () => tracks.find((t) => t.id === selectedId) ?? null,
+    [tracks, selectedId],
+  )
 
   return (
     <div className="app">
@@ -62,6 +68,8 @@ export default function App() {
       {!error && (
         <TrackTable tracks={filtered} selectedId={selectedId} onSelect={setSelectedId} />
       )}
+
+      {selected && <AnalyzePanel key={selected.id} track={selected} />}
     </div>
   )
 }

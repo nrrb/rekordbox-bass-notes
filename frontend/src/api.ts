@@ -1,4 +1,4 @@
-import type { Health, Track } from './types'
+import type { AnalyzeResponse, Health, Track } from './types'
 
 async function getJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init)
@@ -29,4 +29,10 @@ export function fetchTracks(params: { search?: string; limit?: number } = {}): P
 
 export function fetchTrack(id: string): Promise<Track> {
   return getJSON<Track>(`/api/tracks/${encodeURIComponent(id)}`)
+}
+
+export function analyzeTrack(id: string): Promise<AnalyzeResponse> {
+  return getJSON<AnalyzeResponse>(`/api/tracks/${encodeURIComponent(id)}/analyze`, {
+    method: 'POST',
+  })
 }

@@ -144,3 +144,121 @@ tbody tr.selected {
 .center {
   text-align: center;
 }
+
+/* --- analyze panel --- */
+.analyze {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.analyze-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.analyze-title {
+  font-size: 14px;
+}
+
+.analyze button {
+  padding: 8px 14px;
+  background: var(--accent);
+  border: none;
+  border-radius: 6px;
+  color: #0b1020;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.analyze button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+table.bands {
+  width: auto;
+  margin: 6px 0 12px;
+  font-size: 13px;
+}
+table.bands th,
+table.bands td {
+  padding: 4px 16px 4px 0;
+  border: none;
+  text-align: left;
+  font-variant-numeric: tabular-nums;
+}
+table.bands th {
+  position: static;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+}
+table.bands td.digit {
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.token-line {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+code.token {
+  font-size: 14px;
+  font-weight: 700;
+  background: var(--bg);
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.diff {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.diff-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  margin-bottom: 4px;
+}
+.diff-label {
+  flex: 0 0 64px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.diff-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+}
+.diff-note {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+mark.tok-old {
+  background: rgba(224, 100, 90, 0.25);
+  color: var(--text);
+  text-decoration: line-through;
+  border-radius: 3px;
+  padding: 0 2px;
+}
+mark.tok-new {
+  background: rgba(78, 201, 138, 0.28);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.warn {
+  color: var(--warn);
+  font-size: 12px;
+}
