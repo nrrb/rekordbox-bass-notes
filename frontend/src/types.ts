@@ -73,6 +73,9 @@ export interface BatchAnalyzeItem {
   error?: string
   title?: string
   artist?: string
+  audio_path?: string
+  sample_rate?: number
+  duration_sec?: number
   token?: string
   bands?: BandResult[]
   current_comment?: string

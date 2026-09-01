@@ -495,16 +495,50 @@ button.linklike {
   margin: 8px 0 12px;
 }
 .batch-item {
-  padding: 6px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12px;
+  overflow: hidden;
 }
-.batch-item-title {
-  margin-bottom: 3px;
+.batch-item.open {
+  border-color: var(--accent);
+}
+.batch-item-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.batch-item-head:disabled {
+  cursor: default;
+}
+.batch-item-head:not(:disabled):hover {
+  background: rgba(110, 168, 254, 0.08);
+}
+.batch-item-caret {
+  color: var(--muted);
+  flex: none;
 }
 .batch-item-body {
+  padding: 0 8px 6px;
   overflow-wrap: anywhere;
+}
+.batch-item-detail {
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+}
+.batch-item-detail .diff {
+  border-top-color: var(--border);
 }
 
 .modal-wide {

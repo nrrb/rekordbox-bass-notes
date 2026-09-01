@@ -82,11 +82,12 @@ Open <http://localhost:5173>.
    the header checkbox selects everything shown.
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
-   dialog (old → new) → write.
-3. **Two or more selected** → **Analyze N** → a progress count and a per-track
-   result table → **Save M to Rekordbox** (M = tracks whose comment actually
-   changes) → confirm dialog listing every change → one atomic write, one
-   backup.
+   dialog (old → new) → write. Results are **cached for the current library** —
+   deselect and reselect and it's still there (button becomes **Re-analyze**).
+3. **Two or more selected** → **Analyze N** (streams; already-analysed tracks
+   appear instantly from the cache) → a per-track list; click a row to
+   **expand its full analysis** → **Save M to Rekordbox** (M = tracks whose
+   comment actually changes) → confirm dialog → one atomic write, one backup.
 4. Save is disabled while Rekordbox is running — a banner appears, and the app
    re-checks every 5 s (or on the banner's button), so quitting Rekordbox
    mid-session re-enables it without a reload.
@@ -228,10 +229,11 @@ backend/
   backups/        auto-written backups (gitignored)
 frontend/src/
   App.tsx, api.ts, types.ts
+  analysisCache.tsx  results kept per track id for the current library
   hooks/          useHealth (5 s poll), useTracks, useBackups,
                   useAnalyze(+Batch), useUpdateComment(+Batch)
-  components/     TrackTable, AnalyzePanel, BatchPanel, CommentDiff,
-                  ConfirmDialog, BatchConfirmDialog, DbSwitcher,
+  components/     TrackTable, AnalyzePanel, BatchPanel, AnalysisDetail,
+                  CommentDiff, ConfirmDialog, BatchConfirmDialog, DbSwitcher,
                   NoLibrary, RekordboxBanner, RestorePanel
 config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
 ```

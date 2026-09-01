@@ -239,17 +239,20 @@ column on the right (stacks below on narrow screens).
    client-side search box and a **checkbox per row** (row click also toggles) plus a
    select-all-shown header box. **Only tracks with a real local audio file are listed**
    (`list_tracks` filters on `has_file`). Backend caps results (e.g. 500).
-2. **Single panel** (`AnalyzePanel.tsx`) — in the right column when exactly 1 row is
-   selected. "Analyze audio" → band table (`L | 20–39 Hz | −35.5 | 3`), proposed token
-   `B:l3m9h7`, `CommentDiff.tsx` (existing token struck / new prepended token green),
-   "Save to Rekordbox" → `ConfirmDialog.tsx` (old → new) → `PUT /…/comment`.
-3. **Batch panel** (`BatchPanel.tsx`) — in the right column when ≥2 rows selected.
-   "Analyze N" → consumes the NDJSON stream, showing `Analyzing done/total…` and a
-   per-track card list (token + `current → proposed`, or "no change", or an error).
-   "Save M to
-   Rekordbox" (M = tracks whose comment actually changes) → `BatchConfirmDialog.tsx`
-   (scrollable list of every change) → `PUT /api/tracks/comments` (one atomic write) →
-   "Saved M … Backup: …".
+   **Analysis cache** (`analysisCache.tsx`): results are kept per track id for the
+   life of the current library (cleared on DB switch / restore), so deselecting and
+   reselecting a track shows its result immediately, and the single / batch flows
+   share results both ways. `AnalysisDetail.tsx` renders the band table + token +
+   `CommentDiff.tsx`, shared by both panels.
+2. **Single panel** (`AnalyzePanel.tsx`) — right column when exactly 1 row selected.
+   Shows the cached `AnalysisDetail` if present (button reads **Re-analyze**),
+   otherwise **Analyze audio**. **Save to Rekordbox** → `ConfirmDialog.tsx` (old → new)
+   → `PUT /…/comment` (disabled when the comment already carries the token).
+3. **Batch panel** (`BatchPanel.tsx`) — right column when ≥2 rows selected. On
+   selection it seeds the view from the cache; **Analyze N** streams only the
+   not-yet-analysed ids (`done/total` progress). Per-track **accordion** rows —
+   click to expand the full `AnalysisDetail`. **Save M** (M = tracks whose comment
+   changes) → `BatchConfirmDialog.tsx` → `PUT /api/tracks/comments` (one atomic write).
 4. Save buttons disable while Rekordbox is running; every write path shows the backend
    error (esp. "quit Rekordbox"). On success the panels call `refetch` so the table's
    Comment column updates.
@@ -290,17 +293,17 @@ writertest/
     ├── vite.config.ts
     └── src/
         ├── App.tsx
-        ├── api.ts
-        ├── types.ts
+        ├── api.ts   types.ts   analysisCache.tsx (Context: results by track id)
         ├── hooks/
-        │   ├── useTracks.ts
-        │   ├── useAnalyze.ts        useUpdateComment.ts
-        │   └── useBatchAnalyze.ts   useBatchUpdate.ts
+        │   ├── useHealth.ts (5 s poll)   useTracks.ts   useBackups.ts
+        │   ├── useAnalyze.ts             useUpdateComment.ts
+        │   └── useBatchAnalyze.ts        useBatchUpdate.ts
         └── components/
-            ├── TrackTable.tsx
-            ├── AnalyzePanel.tsx     ConfirmDialog.tsx
-            ├── BatchPanel.tsx       BatchConfirmDialog.tsx
-            └── CommentDiff.tsx
+            ├── TrackTable.tsx        AnalysisDetail.tsx (shared)
+            ├── AnalyzePanel.tsx      ConfirmDialog.tsx
+            ├── BatchPanel.tsx        BatchConfirmDialog.tsx
+            ├── CommentDiff.tsx       DbSwitcher.tsx
+            └── NoLibrary.tsx  RekordboxBanner.tsx  RestorePanel.tsx
 ```
 
 _(No `CommentEditor.tsx` — free-text comment editing was in the original sketch but

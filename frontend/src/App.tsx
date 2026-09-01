@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import './App.css'
+import { useAnalysisCache } from './analysisCache'
 import { AnalyzePanel } from './components/AnalyzePanel'
 import { BatchPanel } from './components/BatchPanel'
 import { DbSwitcher } from './components/DbSwitcher'
@@ -12,6 +13,7 @@ import { useTracks } from './hooks/useTracks'
 import type { Health } from './types'
 
 export default function App() {
+  const cache = useAnalysisCache()
   const { health, reachable, reload: reloadHealth, setHealth } = useHealth()
   const { tracks, loading, error, refetch } = useTracks()
   const [search, setSearch] = useState('')
@@ -54,14 +56,16 @@ export default function App() {
 
   const rekordboxRunning = health?.rekordbox_running ?? false
 
-  // Health object pushed from an endpoint (switch / restore) → also refresh tracks.
+  // Health object pushed from an endpoint (switch / restore) → the library
+  // changed, so wipe the analysis cache and reload.
   const onHealthChanged = useCallback(
     (h: Health) => {
       setHealth(h)
+      cache.clear()
       clearSelection()
       refetch()
     },
-    [setHealth, clearSelection, refetch],
+    [setHealth, cache, clearSelection, refetch],
   )
 
   const recheck = useCallback(() => {

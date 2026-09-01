@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useAnalysisCache } from '../analysisCache'
 import { useAnalyze } from '../hooks/useAnalyze'
 import { useUpdateComment } from '../hooks/useUpdateComment'
 import type { Track } from '../types'
-import { CommentDiff } from './CommentDiff'
+import { AnalysisDetail } from './AnalysisDetail'
 import { ConfirmDialog } from './ConfirmDialog'
 
 interface Props {
@@ -13,26 +14,37 @@ interface Props {
 }
 
 export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
-  const { data, loading, error, analyze, reset } = useAnalyze()
+  const cache = useAnalysisCache()
+  const { analyze, loadingId, error, clearError } = useAnalyze()
   const { result, saving, error: saveError, save, reset: resetSave } = useUpdateComment()
   const [confirming, setConfirming] = useState(false)
 
-  // clear stale results when the selected track changes
+  const data = cache.get(track.id) // survives deselect/reselect for this library
+  const loading = loadingId === track.id
+  const dirty = data && data.current_comment !== data.proposed_comment
+
   useEffect(() => {
-    reset()
     resetSave()
+    clearError()
     setConfirming(false)
-  }, [track.id, reset, resetSave])
+  }, [track.id, resetSave, clearError])
 
   const handleConfirm = () => {
     if (!data) return
     save(track.id, data.token)
-      .then(() => {
+      .then((r) => {
+        // keep the cached entry consistent with what's now on disk
+        cache.patch(track.id, {
+          current_comment: r.new_comment,
+          proposed_comment: r.new_comment,
+          existing_tokens: 1,
+          merge_action: 'replaced',
+        })
         setConfirming(false)
         onSaved()
       })
       .catch(() => {
-        /* error is surfaced in the dialog via saveError; keep it open */
+        /* saveError is surfaced in the dialog */
       })
   }
 
@@ -48,7 +60,7 @@ export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
           disabled={loading || !track.has_file}
           title={track.has_file ? undefined : 'no local audio file'}
         >
-          {loading ? 'Analyzing…' : 'Analyze audio'}
+          {loading ? 'Analyzing…' : data ? 'Re-analyze' : 'Analyze audio'}
         </button>
       </div>
 
@@ -56,66 +68,33 @@ export function AnalyzePanel({ track, rekordboxRunning, onSaved }: Props) {
         <p className="muted">No local audio file — analysis unavailable for this track.</p>
       )}
       {error && <p className="error">Analysis failed: {error}</p>}
+      {!data && !loading && track.has_file && (
+        <p className="muted">Not analysed yet.</p>
+      )}
 
       {data && (
         <>
-          <table className="bands">
-            <thead>
-              <tr>
-                <th>band</th>
-                <th>range</th>
-                <th>dBFS</th>
-                <th>digit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.bands.map((b) => (
-                <tr key={b.band} title={`RMS ${b.rms.toFixed(5)}`}>
-                  <td>{b.band}</td>
-                  <td>
-                    {b.hz_low.toFixed(0)}–{b.hz_high.toFixed(0)}&nbsp;Hz
-                  </td>
-                  <td>{b.dbfs.toFixed(1)}</td>
-                  <td className="digit">{b.digit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <AnalysisDetail data={data} />
 
-          <div className="token-line">
-            token <code className="token">{data.token}</code>
-            <span
-              className="muted"
-              title={`Audio is downsampled to ${data.sample_rate} Hz for analysis (only 20–150 Hz matters)`}
-            >
-              {' '}
-              · {data.duration_sec.toFixed(0)}s track · analysed at {data.sample_rate} Hz
-            </span>
-          </div>
-
-          <CommentDiff
-            current={data.current_comment}
-            proposed={data.proposed_comment}
-            action={data.merge_action}
-          />
-
-          {data.existing_tokens > 1 && (
-            <p className="warn">
-              {data.existing_tokens} existing tokens found — all removed, replaced by one.
-            </p>
-          )}
-
-          {result ? (
+          {result && (
             <p className="saved">
               Saved. <code>{result.old_comment || '(empty)'}</code> →{' '}
               <code>{result.new_comment}</code>
             </p>
-          ) : (
+          )}
+
+          {!result && (
             <div className="save-row">
               <button
                 onClick={() => setConfirming(true)}
-                disabled={rekordboxRunning}
-                title={rekordboxRunning ? 'Quit Rekordbox before saving' : undefined}
+                disabled={rekordboxRunning || !dirty}
+                title={
+                  rekordboxRunning
+                    ? 'Quit Rekordbox before saving'
+                    : !dirty
+                      ? 'Comment already has this token'
+                      : undefined
+                }
               >
                 Save to Rekordbox
               </button>
