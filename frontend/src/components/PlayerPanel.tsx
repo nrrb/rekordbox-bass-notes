@@ -154,10 +154,32 @@ export function PlayerPanel({ track }: { track: Track | undefined }) {
           {idle ? (
             <span className="muted">Nothing playing — press ▶ on a track</span>
           ) : track ? (
-            <>
-              <strong>{track.title || '—'}</strong>{' '}
-              <span className="muted">— {track.artist || '—'}</span>
-            </>
+            (() => {
+              // drop parenthetical chunks e.g. "(Original Mix)" and tidy spacing
+              const strip = (s: string) =>
+                (s || '').replace(/\s*\([^)]*\)/g, '').replace(/\s{2,}/g, ' ').trim()
+              const ttl = strip(track.title) || '—'
+              const art = strip(track.artist) || '—'
+              const label = `${ttl} — ${art}`
+              // seg is duplicated; the loop translates by exactly one seg width
+              const seg = (
+                <span className="player-marquee-seg" aria-hidden="true">
+                  <strong>{ttl}</strong>
+                  <span className="player-marquee-sep"> — </span>
+                  {art}
+                </span>
+              )
+              return (
+                <div
+                  className="player-marquee"
+                  style={{ animationDuration: `${Math.max(6, Math.round(label.length * 0.4))}s` }}
+                  aria-label={label}
+                >
+                  {seg}
+                  {seg}
+                </div>
+              )
+            })()
           ) : (
             player.currentId
           )}

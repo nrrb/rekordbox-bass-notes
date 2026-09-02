@@ -582,10 +582,47 @@ mark.tok-new {
 .player-title {
   flex: 1;
   min-width: 0;
-  font-size: 13px;
+  font-size: 0.9286em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  /* headroom so Cube's tall glyphs aren't clipped by the overflow box */
+  padding: 7px 0 3px;
+}
+/* continuously scrolling title/artist — the segment is rendered twice and the
+   track is translated by exactly one segment width, so it loops seamlessly */
+.player-marquee {
+  display: inline-flex;
+  width: max-content;
+  font-family: 'Doto', system-ui, -apple-system, sans-serif;
+  font-size: 150%;
+  font-weight: 600;
+  line-height: 1.4;
+  will-change: transform;
+  animation-name: player-marquee-scroll;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.player-marquee-seg {
+  flex: none;
+  white-space: nowrap;
+  padding-right: 3rem;
+}
+.player-marquee-sep {
+  opacity: 0.55;
+}
+@keyframes player-marquee-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .player-marquee {
+    animation: none;
+  }
 }
 .player-eq {
   display: block;
