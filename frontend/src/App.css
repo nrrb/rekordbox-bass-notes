@@ -5,8 +5,18 @@
   font-display: swap;
 }
 
+/* --- body font --- */
+@font-face {
+  font-family: 'Huninn';
+  src: url('/fonts/Huninn-Regular.ttf') format('truetype');
+  font-display: swap;
+}
+
 :root {
   color-scheme: light dark;
+  /* one root size; every font-size below is an em off it so the UI stays in
+     proportion */
+  --app-font-base: 14px;
   --bg: #14151a;
   --panel: #1c1e26;
   --border: #2c2f3a;
@@ -33,7 +43,9 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Huninn', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: var(--app-font-base);
+  line-height: 1.5;
 }
 
 .app {
@@ -45,7 +57,7 @@ body {
 header h1 {
   margin: 0 0 14px;
   font-family: 'Cube', system-ui, -apple-system, sans-serif;
-  font-size: 20px;
+  font-size: 1.429em;
   /* Cube's glyphs sit tall in the em box — extra leading + margin keep the
      row below from clipping the title */
   line-height: 1.5;
@@ -57,11 +69,11 @@ header h1 {
   gap: 14px;
   align-items: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 0.8571em;
 }
 
 .meta code {
-  font-size: 11px;
+  font-size: 0.7857em;
   background: var(--panel);
   padding: 2px 6px;
   border-radius: 4px;
@@ -78,7 +90,7 @@ header h1 {
   flex-wrap: wrap;
 }
 .db-switch .warn {
-  font-size: 11px;
+  font-size: 0.7857em;
 }
 .db-path-input {
   padding: 3px 6px;
@@ -87,12 +99,12 @@ header h1 {
   border-radius: 4px;
   color: var(--text);
   font: inherit;
-  font-size: 11px;
+  font-size: 0.7857em;
   min-width: 260px;
 }
 
 .db-badge {
-  font-size: 10px;
+  font-size: 0.7143em;
   font-weight: 700;
   letter-spacing: 0.6px;
   padding: 2px 7px;
@@ -212,7 +224,7 @@ header h1 {
   padding: 16px;
   border: 1px dashed var(--border);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 @media (max-width: 860px) {
   .workspace {
@@ -235,7 +247,7 @@ header h1 {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 
 thead th {
@@ -282,7 +294,7 @@ thead th.sortable.sorted {
   color: var(--accent);
 }
 .sort-arrow {
-  font-size: 10px;
+  font-size: 0.7143em;
 }
 
 .num-col {
@@ -314,7 +326,7 @@ thead th.sortable.sorted {
 }
 
 .analyze-title {
-  font-size: 14px;
+  font-size: 1em;
 }
 
 .analyze button {
@@ -335,7 +347,7 @@ thead th.sortable.sorted {
 table.bands {
   width: 100%;
   margin: 6px 0 12px;
-  font-size: 12px;
+  font-size: 0.8571em;
 }
 table.bands th,
 table.bands td {
@@ -358,10 +370,10 @@ table.bands td.digit {
 
 .token-line {
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 code.token {
-  font-size: 14px;
+  font-size: 1em;
   font-weight: 700;
   background: var(--bg);
   padding: 3px 8px;
@@ -382,18 +394,18 @@ code.token {
 .diff-label {
   flex: 0 0 64px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.7857em;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .diff-text {
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 .diff-note {
   margin-top: 4px;
-  font-size: 11px;
+  font-size: 0.7857em;
 }
 
 mark.tok-old {
@@ -412,7 +424,7 @@ mark.tok-new {
 
 .warn {
   color: var(--warn);
-  font-size: 12px;
+  font-size: 0.8571em;
 }
 
 .save-row {
@@ -424,7 +436,7 @@ mark.tok-new {
 
 .saved {
   margin-top: 10px;
-  font-size: 13px;
+  font-size: 0.9286em;
   color: var(--ok);
 }
 .saved code {
@@ -456,13 +468,13 @@ mark.tok-new {
 
 .modal h2 {
   margin: 0 0 4px;
-  font-size: 16px;
+  font-size: 1.143em;
 }
 
 .modal-track {
   margin: 0 0 14px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 
 .modal-row {
@@ -529,7 +541,7 @@ mark.tok-new {
   border-radius: 50%;
   background: var(--bg);
   color: var(--text);
-  font-size: 9px;
+  font-size: 0.6429em;
   line-height: 1;
   cursor: pointer;
 }
@@ -571,7 +583,7 @@ mark.tok-new {
   border-radius: 50%;
   background: var(--accent);
   color: #0b1020;
-  font-size: 11px;
+  font-size: 0.7857em;
   cursor: pointer;
 }
 .player-play:disabled {
@@ -635,7 +647,7 @@ mark.tok-new {
   flex-wrap: wrap;
   gap: 10px;
   margin-bottom: 8px;
-  font-size: 10px;
+  font-size: 0.7143em;
   color: var(--muted);
 }
 .player-eq-legend i {
@@ -653,7 +665,7 @@ mark.tok-new {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 11px;
+  font-size: 0.7857em;
   font-variant-numeric: tabular-nums;
 }
 .player-seek input[type='range'] {
@@ -667,7 +679,7 @@ button.linklike {
   border: none;
   color: var(--accent);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.8571em;
   padding: 0;
   cursor: pointer;
   text-decoration: underline;
@@ -682,7 +694,7 @@ button.linklike {
 .batch-item {
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 0.8571em;
   overflow: hidden;
 }
 .batch-item.open {
@@ -699,7 +711,7 @@ button.linklike {
   border: none;
   color: var(--text);
   font: inherit;
-  font-size: 12px;
+  font-size: 0.8571em;
   text-align: left;
   cursor: pointer;
 }
@@ -745,7 +757,7 @@ button.linklike {
   border-bottom: none;
 }
 .batch-confirm-label {
-  font-size: 12px;
+  font-size: 0.8571em;
   color: var(--muted);
   margin-bottom: 2px;
 }
@@ -761,7 +773,7 @@ button.linklike {
   border: 1px solid rgba(224, 163, 74, 0.5);
   background: rgba(224, 163, 74, 0.12);
   border-radius: 8px;
-  font-size: 13px;
+  font-size: 0.9286em;
 }
 
 /* --- no-library screen --- */
@@ -775,7 +787,7 @@ button.linklike {
 }
 .no-library h2 {
   margin: 0 0 8px;
-  font-size: 16px;
+  font-size: 1.143em;
 }
 .no-library-row {
   display: flex;
@@ -804,10 +816,10 @@ button.linklike {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 0.8571em;
 }
 .backup-main code {
-  font-size: 12px;
+  font-size: 0.8571em;
 }
 .backup-stats {
   margin-top: 3px;
@@ -821,7 +833,7 @@ button.linklike {
 }
 .backup-row .tag {
   margin-left: 6px;
-  font-size: 10px;
+  font-size: 0.7143em;
   font-weight: 700;
   letter-spacing: 0.4px;
   padding: 1px 5px;
@@ -836,5 +848,5 @@ button.linklike {
   padding-top: 12px;
   border-top: 1px solid var(--border);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 0.7857em;
 }
