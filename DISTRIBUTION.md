@@ -81,6 +81,36 @@ toward distribution:
 - The player has only been exercised in dev (Chrome via the Vite proxy); Range
   playback and Web Audio behaviour in the packaged pywebview (WebKit) shell are
   untested.
+- The packaged `.app` has only been run **headless** (`RKBX_NO_WINDOW=1`) so far
+  — the pywebview window, the native file dialog, and `open-external` still need
+  a real GUI pass.
+
+---
+
+## Phase 1 — packaging build-out — 🟡 mostly done
+
+Added since Phase 0 (see the per-item ✅s below for detail):
+
+- `launcher.py` — the frozen entry point (uvicorn thread + pywebview window +
+  single-instance lock + graceful shutdown).
+- `backend/logging_setup.py` — rotating file log; `GET /api/diagnostics` +
+  footer **Copy diagnostics**.
+- `backend/update_check.py` — `GET /api/update-check` vs GitHub Releases;
+  `UpdateBanner`; `last_seen_version` persisted.
+- `backend/desktop.py` + `POST /api/pick-file` + `BrowseButton` — native
+  "choose your master.db" dialog (packaged only), text field otherwise.
+- ffmpeg fallback decode in `backend/analysis.py` (M4A/AAC/ALAC/MP4/WMA).
+- `requirements.txt` pinned; `pywebview` + `imageio-ffmpeg` added.
+- `db.rekordbox_running()` tightened to an exact process-name match (was a
+  prefix match that flagged the packaged app itself); new advisory
+  `db.rekordbox_agent_running()`; frozen exe renamed `bass-notes`;
+  `backend/tests/test_process_detection.py`.
+- `rekordbox bass notes.spec`, `scripts/build_app.sh`, `scripts/make_icns.sh`,
+  `packaging/icon.icns` — an arm64 build succeeds and passes a headless smoke
+  test (opens the real encrypted library, serves the SPA, analyses an MP3).
+
+Still open: a GUI-window pass, `.dmg` polish, RB v5 path check, clean-machine
+field test, signing.
 
 ---
 
@@ -117,41 +147,43 @@ toward distribution:
 
 Each subsection is flagged: ✅ done · 🟡 partly done · ⬜ not started.
 
-### 1. One process — 🟡
+### 1. One process — ✅
 
 - ✅ FastAPI serves `frontend/dist` at `/` (`sys._MEIPASS`-aware), `/api/*` first,
   skipped when no build is present.
 - ✅ CORS relaxed to `*` when `sys.frozen` (same-origin in the packaged app).
-- ⬜ Build the SPA into the bundle (part of M4).
+- ✅ SPA built into the bundle — the spec adds `frontend/dist`; a frozen arm64
+  build was verified serving `/` and `/api/*` from one process.
 
-### 2. Launcher — ⬜
+### 2. Launcher — ✅
 
-- `launcher.py` (PyInstaller entry point):
-  1. resolve/first-run config (below), set up logging to
-     `~/Library/Logs/rekordbox bass notes/`.
-  2. bind `127.0.0.1:0`, read back the port; single-instance lockfile in the
-     app-support dir.
-  3. start uvicorn in a thread.
-  4. open a **pywebview** window at `http://127.0.0.1:<port>` (one dependency; a
-     real window instead of a stray browser tab). Fallback: `webbrowser.open`.
-  5. window close → uvicorn shutdown → exit.
+`launcher.py` (PyInstaller entry point):
+  1. ✅ file logging via `backend/logging_setup.py`; single-instance lock
+     (`fcntl.flock` on `…/Application Support/rekordbox bass notes/app.lock`).
+  2. ✅ picks a free `127.0.0.1` port (pre-bind → read back → hand to uvicorn).
+  3. ✅ uvicorn runs in a daemon thread; `wait_until_ready()` polls `/api/health`.
+  4. ✅ **pywebview** window at `http://127.0.0.1:<port>`; `webbrowser.open`
+     fallback if no GUI backend. `RKBX_NO_WINDOW=1` runs it headless (smoke tests).
+  5. ✅ window close → `server.should_exit` → join → exit; lock released on exit.
 
-### 3. Dependency slimming — 🟡
+### 3. Dependency slimming — ✅
 
 - ✅ **librosa dropped** (→ numba → llvmlite, ~300–400 MB): decode is
   `soundfile`/libsndfile (WAV/AIFF/FLAC/MP3/OGG), resample is
   `scipy.signal.resample_poly`. Recalibration: 1/117 tracks shifted one digit at
   a boundary → `dbfs_scale` / `PRESET_LETTER` unchanged.
-- ⬜ **`ffmpeg` for M4A/AAC/ALAC** — add `imageio-ffmpeg` (`get_ffmpeg_exe()`),
-  route those extensions through it; drop the "not supported yet" error. (M4.)
-- ⬜ **Pin the rest of `requirements.txt`** (numpy/scipy/soundfile/fastapi/
-  uvicorn/psutil are still ranges) for reproducible builds.
+- ✅ **`ffmpeg` for M4A/AAC/ALAC** — `imageio-ffmpeg`'s bundled binary; anything
+  libsndfile rejects is retried through `ffmpeg -f f32le` in
+  `backend/analysis.py::_decode_via_ffmpeg` (ffmpeg does the resample). WAV vs
+  AAC/ALAC of the same tone agree to the digit. "not supported yet" error gone.
+- ✅ **`requirements.txt` pinned** to the built venv (numpy 2.4.6, scipy 1.17.1,
+  soundfile 0.14.0, fastapi 0.141.1, uvicorn 0.52.4, psutil 7.2.2, +
+  `imageio-ffmpeg==0.6.0`, `pywebview==6.2.1`).
 
-Runtime deps after M4: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned
-`==0.4.4`**), `sqlcipher3-wheels`, `fastapi`, `uvicorn`, `psutil`, `pywebview`,
-`imageio-ffmpeg`.
+Runtime deps: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned `==0.4.4`**),
+`sqlcipher3-wheels`, `fastapi`, `uvicorn`, `psutil`, `pywebview`, `imageio-ffmpeg`.
 
-### 4. Config & writable paths — 🟡
+### 4. Config & writable paths — ✅
 
 - ✅ `backend/runtime.py` — `db_path` + `backup_dir` persisted to
   `config.json` (`~/Library/Application Support/rekordbox bass notes/` frozen,
@@ -160,9 +192,11 @@ Runtime deps after M4: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned
 - ✅ Backups default to **`~/Music/rekordbox bass notes Backups/`** when frozen
   (`backend/backups/` in dev).
 - ✅ `backend/__init__.py` `__version__` — in `/api/health` and the UI footer.
-- ⬜ **File logging** to `~/Library/Logs/rekordbox bass notes/` (for "Copy
-  diagnostics"). Nothing writes there yet.
-- ⬜ `last_seen_version` in `config.json` for the update-check banner (M6).
+- ✅ **File logging** — `backend/logging_setup.py`: rotating `app.log`
+  (`~/Library/Logs/rekordbox bass notes/` frozen, `./.logs/` dev), uvicorn
+  records fold in. `GET /api/diagnostics` returns the tail; footer **Copy
+  diagnostics** button copies it. `log_path` is in `/api/health`.
+- ✅ `last_seen_version` in `config.json` — set by `POST /api/update-check/dismiss`.
 
 ### 5. First-run library setup — 🟡
 
@@ -172,9 +206,11 @@ Runtime deps after M4: `numpy`, `scipy`, `soundfile`, `pyrekordbox` (**pinned
 - ✅ **`NoLibrary` screen** — when `db_kind === "none"` the app shows a
   locate-your-`master.db` panel (detected-path "Open it", a path field, and
   "Retry auto-detect") instead of a broken table.
-- ⬜ **Native file dialog** — the path fields (`NoLibrary`, `DbSwitcher`) are
-  text inputs; in the packaged app wire them to `window.create_file_dialog()`
-  (pywebview).
+- 🟡 **Native file dialog** — bridge done: `launcher.py` registers a pywebview
+  `create_file_dialog` picker into `backend/desktop.py`; `POST /api/pick-file`
+  exposes it (501 in dev/browser); a self-hiding **`BrowseButton`** sits next to
+  the path fields in `NoLibrary` and `DbSwitcher`. Not yet clicked in a real
+  packaged window.
 - ⬜ Confirm the v5 / v6 / v7 directory variants all resolve (pyrekordbox
   handles 6/7; check 5).
 
@@ -201,35 +237,62 @@ logging lands.)
   app is already running is picked up (and closing it re-enables Save).
 - **`RekordboxBanner`** — a persistent amber banner while Rekordbox runs, with an
   "I've quit it — re-check" button (also forces a health refresh).
+- **Process detection is exact-match.** `db.rekordbox_running()` matches a
+  process named exactly `rekordbox` (`.exe` stripped) — same as pyrekordbox's
+  own `commit()` guard, so the two never disagree. A prefix match would flag the
+  packaged app's *own* process and block every write; regression-tested in
+  `backend/tests/test_process_detection.py`, and the frozen Mach-O is named
+  `bass-notes` (not `rekordbox bass notes`) as a second line of defence.
+- **`rekordbox_agent_running`** (in `/api/health`) — advisory only. When the
+  `rekordboxAgent` cloud-sync helper is up but Rekordbox itself is closed, the
+  header shows a "pause sync before saving" note; it does **not** block writes
+  (the agent doesn't hold the master.db write lock).
 
-### 9. App polish — 🟡
+### 9. App polish — ✅ (icon is a placeholder)
 
 - ✅ **About / version** — `__version__` in `/api/health` + a UI footer.
-- ✅ **Window title** — the SPA `<title>` (`Info.plist` `CFBundleName` comes with
-  the PyInstaller `--name` in M4).
-- ⬜ **Icon** — a `.icns` for the PyInstaller spec / `Info.plist` (M4).
+- ✅ **Window title** — the SPA `<title>`; `Info.plist` `CFBundleName` set in the
+  spec.
+- ✅ **Icon** — `packaging/icon.icns`, generated by `scripts/make_icns.sh` from
+  `packaging/icon-src.svg` (the app's own bass-bolt mark on a dark rounded rect,
+  rendered via QuickLook → `sips`/`iconutil`). Functional placeholder; swap the
+  source SVG for a real design and re-run the script.
+
+### 10. In-app update check — ✅ (needs a repo configured)
+
+- ✅ `backend/update_check.py` — `GET /api/update-check` compares `__version__`
+  to the latest **GitHub Releases** tag for `$UPDATE_REPO` (memoised ~1 h;
+  `$UPDATE_GITHUB_TOKEN` for a private repo). `supported:false` when unset.
+- ✅ **`UpdateBanner`** — dismissible "vX.Y.Z is available" with a Download button
+  that opens the release page via `POST /api/open-external` (`webbrowser.open`,
+  so it works from the WebKit shell). Dismiss persists `last_seen_version`.
 
 ---
 
 ## Build pipeline
 
-### PyInstaller spec essentials
+### PyInstaller spec
+
+`rekordbox bass notes.spec` is the real thing (checked in). It reads the version
+from `backend/__init__.py`, refuses to build if `frontend/dist/index.html` is
+missing, `collect_all`s `pyrekordbox` / `soundfile` / `imageio_ffmpeg` /
+`scipy` / `numpy`, `collect_dynamic_libs` for `sqlcipher3`, adds the uvicorn
+protocol/lifespan hidden imports, and emits a `.app` with the icon + an
+`Info.plist` (`CFBundleName`, version, `LSMinimumSystemVersion 12.0`,
+`NSAllowsLocalNetworking`). The Mach-O executable is named **`bass-notes`**
+(`EXE_NAME`), not `rekordbox bass notes`, so the running process can't be
+confused with Rekordbox by a name match; `CFBundleName` and the window title are
+unchanged.
 
 ```
-pyinstaller --name "rekordbox bass notes" --windowed --noconfirm \
-  --osx-bundle-identifier com.<you>.rekordbox-bass-notes \
-  --target-arch arm64 \
-  --collect-all pyrekordbox \
-  --collect-all soundfile \
-  --collect-all imageio_ffmpeg \
-  --collect-binaries sqlcipher3 \
-  --collect-all scipy --collect-all numpy \
-  --add-data "frontend/dist:frontend/dist" \
-  --hidden-import uvicorn.protocols.http.h11_impl \
-  --hidden-import uvicorn.protocols.websockets.websockets_impl \
-  --hidden-import uvicorn.lifespan.on \
-  launcher.py
+.venv/bin/pyinstaller "rekordbox bass notes.spec" --noconfirm
 ```
+
+**Status:** a full `--target-arch arm64` build succeeds and was smoke-tested
+headless (`RKBX_NO_WINDOW=1`): opens the real encrypted `master.db` (sqlcipher3 +
+pyrekordbox key blob resolve frozen), serves the SPA at `/`, and analyses a real
+MP3 end-to-end (`B:l3m9h7`). Bundle ~213 MB. Not yet run through a GUI window,
+`create-dmg`, or signing.
 
 Known gotchas for this stack:
 
@@ -257,8 +320,11 @@ Known gotchas for this stack:
 
 ### Reproducible build
 
-- A `scripts/build_app.sh` that: `npm ci && npm run build`, `pyinstaller
-  "rekordbox bass notes.spec"`, `create-dmg`, prints the artifact path + SHA256.
+- `scripts/build_app.sh` — `npm --prefix frontend ci && … run build`, regenerate
+  the icon if missing, `pyinstaller "rekordbox bass notes.spec"`, ad-hoc
+  codesign, then `.dmg` via `create-dmg` (falls back to `hdiutil create -format
+  UDZO` with an `/Applications` symlink), and prints the artifact path + SHA256.
+  `--no-dmg` stops after the `.app`.
 - Run it on an Apple Silicon Mac matching the deployment floor. PyInstaller does
   **not** cross-compile — an Intel build needs an Intel (or Rosetta) machine.
 
@@ -343,19 +409,19 @@ supported product; it can break when Rekordbox updates.
 Phase 0 already covered the librosa drop, runtime config, human errors, the
 backup endpoints, and the static mount.
 
-| # | Milestone | Left to do | Rough effort |
+| # | Milestone | Status | Left to do |
 |---|---|---|---|
-| M0 | One process | `launcher.py` + pywebview, `127.0.0.1:0` port, graceful shutdown, single-instance lock | ~0.5 day |
-| M1 | Deps | bundle `ffmpeg` (`imageio-ffmpeg`) for M4A/AAC/ALAC; pin the rest of `requirements.txt` | ~0.5 day |
-| M2 | Loose ends | file logging to `~/Library/Logs/rekordbox bass notes/`; native file dialog for the path fields; check RB v5 path variant | ~0.5 day |
-| M3 | ~~UI panels~~ | ✅ done — restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer, 70/30 layout, analysis cache, batch accordion, audio player + EQ | — |
-| M4 | Package | `.icns` icon; PyInstaller spec that runs frozen (sqlcipher3 / ffmpeg / data-file iterations); `scripts/build_app.sh` → `.dmg` (arm64) | ~1–2 days |
-| M5 | Field test | clean-machine / friend's-Mac run; fix what breaks; release to 1–2 people | ~0.5–1 day + iteration |
-| M6 | Ship | wider release; in-app update-check banner (`last_seen_version`) | ~0.5 day |
-| M7 *(optional)* | Signing | Developer ID sign + notarize + staple (`.app` and `.dmg`) | ~0.5 day one-time |
+| M0 | One process | ✅ | `launcher.py` — pywebview + `webbrowser` fallback, free `127.0.0.1` port, uvicorn thread, single-instance `flock`, graceful shutdown |
+| M1 | Deps | ✅ | ffmpeg fallback decode via `imageio-ffmpeg`; `requirements.txt` pinned |
+| M2 | Loose ends | 🟡 | ✅ file logging + `/api/diagnostics` + Copy-diagnostics button; ✅ native-dialog bridge (`/api/pick-file`, `BrowseButton`) — untested in a real window; ⬜ RB v5 path variant |
+| M3 | ~~UI panels~~ | ✅ | restore panel, Rekordbox banner + 5 s health polling, no-library screen, version footer, 70/30 layout, analysis cache, batch accordion, audio player + EQ |
+| M4 | Package | 🟡 | ✅ `.icns` (placeholder), ✅ `rekordbox bass notes.spec` — **arm64 build succeeds, headless smoke test passes**, ✅ `scripts/build_app.sh`; ⬜ run through a GUI window; ⬜ `create-dmg` polish; ⬜ clean-machine `.dmg` check |
+| M5 | Field test | ⬜ | clean-machine / friend's-Mac run; fix what breaks; release to 1–2 people |
+| M6 | Ship | 🟡 | ✅ update-check endpoint + `UpdateBanner` + `last_seen_version`; ⬜ set `UPDATE_REPO`, cut the first tagged release |
+| M7 *(optional)* | Signing | ⬜ | Developer ID sign + notarize + staple (`.app` and `.dmg`) |
 
-Total remaining to a shareable v1: roughly **3–4 focused days**, most of it in
-M4 (PyInstaller).
+Remaining to a shareable v1: a GUI-window pass on the build, `.dmg` packaging
+polish, the RB v5 path check, and a clean-machine field test (M5).
 
 ---
 

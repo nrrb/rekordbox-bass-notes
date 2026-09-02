@@ -776,6 +776,26 @@ button.linklike {
   font-size: 0.9286em;
 }
 
+/* --- update-available banner --- */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid rgba(99, 160, 255, 0.5);
+  background: rgba(99, 160, 255, 0.12);
+  border-radius: 8px;
+  font-size: 0.9286em;
+}
+.update-banner-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  white-space: nowrap;
+}
+
 /* --- no-library screen --- */
 .no-library {
   margin-top: 18px;
@@ -849,4 +869,8 @@ button.linklike {
   border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: 0.7857em;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }

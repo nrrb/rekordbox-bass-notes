@@ -60,6 +60,9 @@ def _env_db_path() -> str | None:
 class RuntimeConfig:
     db_path: str = ""
     backup_dir: str = ""
+    # last release the user acknowledged in the "update available" banner; the
+    # banner stays hidden while this equals (or is newer than) the latest tag.
+    last_seen_version: str = ""
 
     def load(self) -> "RuntimeConfig":
         try:
@@ -78,13 +81,21 @@ class RuntimeConfig:
             or data.get("backup_dir")
             or _default_backup_dir()
         )
+        self.last_seen_version = data.get("last_seen_version") or ""
         return self
 
     def save(self) -> None:
         p = config_path()
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
-            json.dumps({"db_path": self.db_path, "backup_dir": self.backup_dir}, indent=2)
+            json.dumps(
+                {
+                    "db_path": self.db_path,
+                    "backup_dir": self.backup_dir,
+                    "last_seen_version": self.last_seen_version,
+                },
+                indent=2,
+            )
         )
 
 

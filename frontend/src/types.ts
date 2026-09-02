@@ -15,8 +15,21 @@ export interface Health {
   db_kind: 'live' | 'custom' | 'none'
   detected_library_path: string | null
   rekordbox_running: boolean
+  rekordbox_agent_running: boolean
   track_count: number | null
   local_track_count: number | null
+  log_path: string
+}
+
+export interface UpdateInfo {
+  supported: boolean
+  current: string
+  latest: string | null
+  update_available: boolean
+  url: string | null
+  notes: string | null
+  error: string | null
+  last_seen: string
 }
 
 export interface BackupRecent {

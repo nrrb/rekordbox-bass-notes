@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import mimetypes
 import os
 import sys
@@ -27,10 +28,11 @@ from . import __version__
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, model_validator
 
 from . import restore as restore_mod
+from . import update_check
 from .analysis import AudioDecodeError, BandResult, analyze_file, merge_token
 from .config import settings
 from .db import (
@@ -40,9 +42,14 @@ from .db import (
     Track,
     TrackNotFoundError,
     detect_library_path,
+    rekordbox_agent_running,
     rekordbox_running,
 )
+from .logging_setup import log_path, read_tail, setup_logging
 from .runtime import runtime
+
+setup_logging()
+log = logging.getLogger("backend.main")
 
 
 @dataclass
@@ -131,9 +138,10 @@ _swap_lock = threading.Lock()
 async def lifespan(_app: FastAPI):
     try:
         _state["db"] = RekordboxDB()
+        log.info("opened database %s", _state["db"].db_path)
     except Exception as e:  # noqa: BLE001 - start anyway; the UI shows a locate screen
         _state["db"] = None
-        print(f"startup: no database open ({type(e).__name__}: {e})")
+        log.warning("startup: no database open (%s: %s)", type(e).__name__, e)
     try:
         yield
     finally:
@@ -207,6 +215,8 @@ def health() -> dict:
         "version": __version__,
         "detected_library_path": detected,
         "rekordbox_running": rekordbox_running(),
+        "rekordbox_agent_running": rekordbox_agent_running(),
+        "log_path": str(log_path()),
     }
     d = _state.get("db")
     if d is None:
@@ -254,6 +264,74 @@ def switch_db(body: DbSwitchRequest) -> dict:
     new_path = "" if body.target == "live" else (body.path or "")
     _swap_db(new_path)
     return health()
+
+
+# --- diagnostics & updates ------------------------------------------------
+@app.get("/api/diagnostics", response_class=PlainTextResponse)
+def diagnostics() -> str:
+    """The tail of the app log, for a 'Copy diagnostics' button."""
+    header = (
+        f"rekordbox bass notes {__version__}\n"
+        f"python {sys.version.split()[0]}  frozen={getattr(sys, 'frozen', False)}\n"
+        f"log: {log_path()}\n"
+        f"{'-' * 60}\n"
+    )
+    return header + read_tail()
+
+
+class DismissUpdate(BaseModel):
+    version: str
+
+
+@app.get("/api/update-check")
+def update_check_api(force: bool = Query(False)) -> dict:
+    """Latest GitHub release vs. the running version (memoised ~1h). Includes
+    ``last_seen`` so the UI can keep the banner dismissed per-version."""
+    info = update_check.check(force=force).as_dict()
+    info["last_seen"] = runtime.last_seen_version
+    if info.get("latest") and not update_check.is_newer(
+        info["latest"], runtime.last_seen_version or "0"
+    ):
+        info["update_available"] = False
+    return info
+
+
+@app.post("/api/update-check/dismiss")
+def dismiss_update(body: DismissUpdate) -> dict:
+    runtime.last_seen_version = body.version.strip()
+    runtime.save()
+    return {"last_seen": runtime.last_seen_version}
+
+
+class OpenExternal(BaseModel):
+    url: str
+
+
+@app.post("/api/open-external")
+def open_external(body: OpenExternal) -> dict:
+    """Open a URL in the user's real browser (the packaged WebKit shell can't
+    navigate away from the app itself)."""
+    import webbrowser
+
+    url = body.url.strip()
+    if not (url.startswith("https://") or url.startswith("http://")):
+        raise HTTPException(status_code=422, detail="only http(s) URLs are allowed")
+    webbrowser.open(url)
+    return {"opened": url}
+
+
+@app.post("/api/pick-file")
+def pick_file_api() -> dict:
+    """Open the OS 'choose a file' dialog (packaged app only). Returns the chosen
+    path or ``{path: null}`` on cancel; 501 when there's no native shell."""
+    from . import desktop
+
+    if not desktop.has_file_picker():
+        raise HTTPException(status_code=501, detail="Native file dialog isn't available here.")
+    try:
+        return {"path": desktop.pick_file()}
+    except Exception as e:  # noqa: BLE001
+        raise _http(e) from e
 
 
 @app.get("/api/tracks", response_model=list[Track])

@@ -51,8 +51,9 @@ modern masters; that's the real distribution, not a bug.
 - Node 22+
 - Rekordbox **fully quit** whenever the app writes
 
-Audio decoding is `soundfile` / libsndfile — WAV, AIFF, FLAC, MP3, OGG. M4A /
-AAC / ALAC aren't supported yet (they need `ffmpeg`, planned).
+Audio decoding is `soundfile` / libsndfile — WAV, AIFF, FLAC, MP3, OGG —
+with a bundled `ffmpeg` (via `imageio-ffmpeg`) picking up M4A / AAC / ALAC /
+MP4 / WMA.
 
 ---
 
@@ -79,6 +80,15 @@ cd frontend && npm run dev
 ```
 
 Open <http://localhost:5173>.
+
+To build the double-clickable macOS app (Apple Silicon):
+
+```sh
+scripts/build_app.sh          # → dist/rekordbox bass notes.app + a .dmg
+scripts/build_app.sh --no-dmg # just the .app
+```
+
+See [`DISTRIBUTION.md`](DISTRIBUTION.md) for the full packaging plan and status.
 
 1. The list shows **only tracks with a local audio file** (streaming and
    missing/relocated files are hidden). Check rows (or click them) to select;
@@ -128,6 +138,8 @@ variable → `config.json` → default. Everything else is env-only; defaults li
 | `BACKUP_KEEP` | `20` | Max backup sets kept; older ones pruned after each write. `0` = keep all. |
 | `RESULT_LIMIT` | `500` | Max tracks returned by `/api/tracks`. |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | CORS allow-origin. |
+| `UPDATE_REPO` | _(unset)_ | `owner/repo` for the in-app update check. Unset ⇒ no update banner. |
+| `UPDATE_GITHUB_TOKEN` | _(unset)_ | Fine-grained PAT (read-only Contents/Releases) for `UPDATE_REPO` when it's private. |
 | `AUDIO_SR` | `500` | Hz the audio is resampled to for the DSP (only 20–150 Hz matters). |
 | `FILTER_ORDER` | `8` | Butterworth band-pass order. |
 | `PRESET_LETTER` | `B` | Token prefix. |
@@ -213,7 +225,7 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 
 | Method | Path | Notes |
 |--------|------|-------|
-| `GET` | `/api/health` | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, … }` — the UI polls this every 5 s |
+| `GET` | `/api/health` | `{ version, db_path, db_kind (live|custom|none), detected_library_path, rekordbox_running, rekordbox_agent_running, log_path, … }` — the UI polls this every 5 s |
 | `GET` | `/api/tracks?search=&limit=` | Local-file tracks only |
 | `GET` | `/api/tracks/{id}` | Any track, including streaming |
 | `GET` | `/api/tracks/{id}/audio` | Streams the local audio file (Range/seek supported) for the player |
@@ -224,33 +236,50 @@ Run these with the venv's interpreter: `.venv/bin/python -m backend.<tool>`.
 | `POST` | `/api/db/switch` | Body `{"target": "live"}` (auto-locate) or `{"target": "custom", "path": "/…/master.db"}`. Reopens the backend against that database and **persists the choice** to `config.json`. Returns fresh health. |
 | `GET` | `/api/backups` | The backup listing (name, time, sizes, USN, track/tagged counts, recent edits) + the live DB's stats. |
 | `POST` | `/api/backups/{name}/restore` | Restore that backup over the live DB. Rekordbox must be closed (409 otherwise); snapshots the current DB to `*_prerestore.db` first. Returns fresh health. |
+| `GET` | `/api/diagnostics` | Plain-text tail of the app log (for the footer's **Copy diagnostics**). |
+| `GET` | `/api/update-check` | Latest GitHub release vs. the running version (`UPDATE_REPO`); `supported:false` when unset. Memoised ~1 h. |
+| `POST` | `/api/update-check/dismiss` | Body `{"version"}`. Persists `last_seen_version` so the update banner stays hidden for it. |
+| `POST` | `/api/open-external` | Body `{"url"}` (http/https). Opens it in the user's real browser. |
+| `POST` | `/api/pick-file` | Opens the OS file dialog (packaged app only; `501` in dev/browser). Returns `{path}` or `{path:null}` on cancel. |
 
 ---
 
 ## Layout
 
 ```
+launcher.py       frozen-app entry point: uvicorn thread + pywebview window
+                  + single-instance lock + graceful shutdown
+rekordbox bass notes.spec   PyInstaller spec (arm64 .app)
+scripts/          build_app.sh (→ .app/.dmg), make_icns.sh
+packaging/        icon-src.svg + icon.icns
 backend/
   config.py       static/env settings (audio, dbfs_scale, …)
-  runtime.py      user-settable, persisted: db_path + backup_dir (config.json)
+  runtime.py      user-settable, persisted: db_path + backup_dir
+                  + last_seen_version (config.json)
   db.py           pyrekordbox wrapper: reads, backup(), set_comment(s)()
-  analysis.py     decode → band-pass → dBFS → token → merge (+ CLI)
+  analysis.py     decode (soundfile, ffmpeg fallback) → band-pass → dBFS
+                  → token → merge (+ CLI)
   calibrate.py    batch dBFS distribution report (CLI)
   restore.py      list / restore backups (CLI + shared with the API)
   inspect_db.py   sanity-check a master.db (CLI)
+  logging_setup.py  rotating app.log (~/Library/Logs/… frozen, ./.logs/ dev)
+  update_check.py   GitHub Releases vs __version__
+  desktop.py        native file-picker bridge (set by launcher.py)
   main.py         FastAPI app
   backups/        auto-written backups (gitignored)
+  tests/          unittest (e.g. process-detection regression)
 frontend/src/
   App.tsx, api.ts, types.ts
   bassToken.ts       l/m/h band edges + parse digits out of a "B:l#m#h#" token
   analysisCache.tsx  results kept per track id for the current library
   player.tsx         one <audio> + Web Audio AnalyserNode (Context)
-  hooks/          useHealth (5 s poll), useTracks, useBackups,
+  hooks/          useHealth (5 s poll), useTracks, useBackups, useUpdateCheck,
                   useAnalyze(+Batch), useUpdateComment(+Batch)
   components/     TrackTable, PlayerPanel, AnalyzePanel, BatchPanel,
                   AnalysisDetail, CommentDiff, ConfirmDialog,
-                  BatchConfirmDialog, DbSwitcher, NoLibrary,
-                  RekordboxBanner, RestorePanel
+                  BatchConfirmDialog, DbSwitcher, NoLibrary, BrowseButton,
+                  RekordboxBanner, RestorePanel, UpdateBanner, CopyDiagnostics
 frontend/public/fonts/Cube.ttf   display face for the "rekordbox bass notes" title
-config.json       chosen db_path + backup_dir (dev: .rkbx-config.json, gitignored)
+config.json       chosen db_path + backup_dir + last_seen_version
+                  (dev: .rkbx-config.json, gitignored)
 ```

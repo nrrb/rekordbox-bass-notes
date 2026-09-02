@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { switchDb } from '../api'
 import type { Health } from '../types'
+import { BrowseButton } from './BrowseButton'
 
 interface Props {
   health: Health
@@ -51,6 +52,7 @@ export function NoLibrary({ health, onOpened, onRetry }: Props) {
           onChange={(e) => setPath(e.target.value)}
           disabled={busy}
         />
+        <BrowseButton className="secondary" label="Browse…" onPicked={setPath} />
         <button
           disabled={busy || !path.trim()}
           onClick={() => open({ target: 'custom', path: path.trim() })}

@@ -1,14 +1,25 @@
 # Rekordbox comment tagger — backend deps
 # Install into ./.venv:  .venv/bin/pip install -r backend/requirements.txt
+#
+# Pinned for reproducible PyInstaller builds. Bump deliberately, re-run
+# backend/calibrate.py if numpy/scipy/soundfile move, and re-test a frozen
+# build before shipping.
 
-pyrekordbox==0.4.4
-sqlcipher3-wheels==0.5.7
+# --- Rekordbox library access ---
+pyrekordbox==0.4.4          # pinned: key scheme / schema support tracks RB releases
+sqlcipher3-wheels==0.5.7    # compiled SQLCipher+OpenSSL; imported dynamically by pyrekordbox
 SQLAlchemy==2.0.52
-fastapi>=0.115
-uvicorn[standard]>=0.30
-psutil>=6.0
 
-# audio analysis
-numpy>=1.26
-scipy>=1.11
-soundfile>=0.12   # bundles libsndfile (WAV/AIFF/FLAC/MP3/OGG); M4A/AAC need ffmpeg (later)
+# --- web server ---
+fastapi==0.141.1
+uvicorn[standard]==0.52.4
+psutil==7.2.2
+
+# --- audio analysis ---
+numpy==2.4.6
+scipy==1.17.1
+soundfile==0.14.0          # bundles libsndfile (WAV/AIFF/FLAC/MP3/OGG)
+imageio-ffmpeg==0.6.0      # bundles the ffmpeg binary for M4A/AAC/ALAC/MP4/WMA
+
+# --- packaged app shell ---
+pywebview==6.2.1           # native window for the frozen app (launcher.py)

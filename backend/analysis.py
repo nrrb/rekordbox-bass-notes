@@ -37,6 +37,7 @@ import json
 import math
 import os
 import re
+import subprocess
 import sys
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -51,7 +52,9 @@ _DBFS_REF_RMS = 1.0 / math.sqrt(2.0)
 _TINY = 1e-12
 _BAND_LABELS = ("L", "M", "H")
 
-# formats libsndfile can't open; give a specific message rather than "corrupt"
+# formats libsndfile can't open on its own; these are decoded with the bundled
+# ffmpeg (imageio-ffmpeg) instead. If ffmpeg is unavailable we fall back to a
+# specific "needs ffmpeg" message rather than a generic "corrupt".
 _NEEDS_FFMPEG = ("m4a", "aac", "mp4", "alac", "m4b", "wma")
 
 
@@ -150,13 +153,52 @@ def _resample_to(y: np.ndarray, sr_from: int, sr_to: int) -> np.ndarray:
     return signal.resample_poly(y, sr_to // g, sr_from // g)
 
 
+def _ffmpeg_exe() -> Optional[str]:
+    """Path to the ffmpeg binary bundled by imageio-ffmpeg, or ``None`` if the
+    package (or its binary) is unavailable."""
+    try:
+        import imageio_ffmpeg  # deferred: only needed for the ffmpeg fallback
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:  # noqa: BLE001 - missing package / download failure
+        return None
+
+
+def _decode_via_ffmpeg(path: str, target: int) -> tuple[np.ndarray, int]:
+    """Decode ``path`` to mono float64 at ``target`` Hz using ffmpeg.
+
+    Covers what libsndfile can't (M4A / AAC / ALAC / MP4 / WMA). ffmpeg does the
+    resample here (its polyphase resampler); for the 20-150 Hz analysis band the
+    difference from ``scipy.signal.resample_poly`` is well under the digit
+    quantisation, and these formats had no calibrated tokens before anyway.
+    """
+    exe = _ffmpeg_exe()
+    if exe is None:
+        ext = os.path.splitext(path)[1].lower().lstrip(".")
+        raise AudioDecodeError(
+            f"{ext.upper() or 'this'} files need ffmpeg, which isn't available "
+            f"in this build."
+        )
+    cmd = [
+        exe, "-v", "error", "-nostdin", "-i", path,
+        "-map", "0:a:0", "-ac", "1", "-ar", str(target), "-f", "f32le", "-",
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if proc.returncode != 0 or not proc.stdout:
+        tail = proc.stderr.decode("utf-8", "replace").strip().splitlines()
+        why = tail[-1] if tail else "no audio stream decoded"
+        raise AudioDecodeError(f"could not read {os.path.basename(path)}: {why}")
+    y = np.frombuffer(proc.stdout, dtype="<f4").astype(np.float64)
+    return np.ascontiguousarray(y), target
+
+
 def load_audio(path: str, sr: Optional[int] = None) -> tuple[np.ndarray, int]:
     """Decode ``path`` to mono float64 at ``sr`` (default ``settings.audio_sr``).
 
-    Decoding is libsndfile (via ``soundfile``): WAV / AIFF / FLAC / MP3 / OGG and
-    similar. M4A / AAC / ALAC are not supported yet (they need ffmpeg). Resampling
-    to the analysis rate is ``scipy.signal.resample_poly``; on real tracks it
-    matches the previous librosa/soxr path within ~0.01 dB per band.
+    libsndfile (via ``soundfile``) handles WAV / AIFF / FLAC / MP3 / OGG and
+    similar, with ``scipy.signal.resample_poly`` for the rate change (matches the
+    previous librosa/soxr path within ~0.01 dB per band). Anything libsndfile
+    rejects (M4A / AAC / ALAC / MP4 / WMA) is retried through the bundled ffmpeg.
     """
     import soundfile as sf  # deferred: keeps `import backend.analysis` light
 
@@ -164,14 +206,14 @@ def load_audio(path: str, sr: Optional[int] = None) -> tuple[np.ndarray, int]:
     try:
         data, sr_native = sf.read(path, dtype="float64", always_2d=True)
     except sf.LibsndfileError as e:
-        ext = os.path.splitext(path)[1].lower().lstrip(".")
-        if ext in _NEEDS_FFMPEG:
+        try:
+            return _decode_via_ffmpeg(path, target)
+        except AudioDecodeError:
+            raise
+        except Exception as ff:  # noqa: BLE001 - surface as a decode failure
             raise AudioDecodeError(
-                f"{ext.upper()} files aren't supported yet (they need ffmpeg)."
+                f"could not read {os.path.basename(path)}: {ff}"
             ) from e
-        raise AudioDecodeError(
-            f"could not read {os.path.basename(path)}: {e}"
-        ) from e
 
     y = data.mean(axis=1) if data.shape[1] > 1 else data[:, 0]
     y = _resample_to(np.ascontiguousarray(y, dtype=np.float64), int(sr_native), target)

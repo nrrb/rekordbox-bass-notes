@@ -6,6 +6,7 @@ import type {
   CommentUpdateResult,
   Health,
   Track,
+  UpdateInfo,
 } from './types'
 
 async function getJSON<T>(url: string, init?: RequestInit): Promise<T> {
@@ -70,6 +71,58 @@ export function updateComment(
 
 export function fetchBackups(): Promise<BackupsResponse> {
   return getJSON<BackupsResponse>('/api/backups')
+}
+
+/** Latest-release check (GitHub). `supported: false` when no update source is configured. */
+export function fetchUpdateCheck(): Promise<UpdateInfo> {
+  return getJSON<UpdateInfo>('/api/update-check')
+}
+
+/** Remember that the user acknowledged `version`, so the banner stays hidden for it. */
+export function dismissUpdate(version: string): Promise<{ last_seen: string }> {
+  return getJSON('/api/update-check/dismiss', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version }),
+  })
+}
+
+/** Open a URL in the user's real browser (works from the packaged WebKit shell). */
+export function openExternal(url: string): Promise<{ opened: string }> {
+  return getJSON('/api/open-external', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
+/** Plain-text tail of the app log, for "Copy diagnostics". */
+export async function fetchDiagnostics(): Promise<string> {
+  const res = await fetch('/api/diagnostics')
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.text()
+}
+
+/**
+ * Ask the desktop shell to open a native "choose a file" dialog.
+ * Resolves to the chosen path, `null` on cancel, or `undefined` when there's no
+ * native shell (dev / plain browser) so callers can hide the button.
+ */
+export async function pickFile(): Promise<string | null | undefined> {
+  const res = await fetch('/api/pick-file', { method: 'POST' })
+  if (res.status === 501) return undefined
+  if (!res.ok) {
+    let detail = res.statusText
+    try {
+      const body = await res.json()
+      if (body?.detail) detail = body.detail
+    } catch {
+      /* keep statusText */
+    }
+    throw new Error(`${res.status} ${detail}`)
+  }
+  const body = (await res.json()) as { path: string | null }
+  return body.path
 }
 
 export function restoreBackup(name: string): Promise<{ restored_from: string; prerestore_snapshot: string } & Health> {

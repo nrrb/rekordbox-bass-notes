@@ -3,21 +3,25 @@ import './App.css'
 import { useAnalysisCache } from './analysisCache'
 import { AnalyzePanel } from './components/AnalyzePanel'
 import { BatchPanel } from './components/BatchPanel'
+import { CopyDiagnostics } from './components/CopyDiagnostics'
 import { DbSwitcher } from './components/DbSwitcher'
 import { NoLibrary } from './components/NoLibrary'
 import { PlayerPanel } from './components/PlayerPanel'
 import { RekordboxBanner } from './components/RekordboxBanner'
 import { RestorePanel } from './components/RestorePanel'
 import { TrackTable } from './components/TrackTable'
+import { UpdateBanner } from './components/UpdateBanner'
 import { usePlayer } from './player'
 import { useHealth } from './hooks/useHealth'
 import { useTracks } from './hooks/useTracks'
+import { useUpdateCheck } from './hooks/useUpdateCheck'
 import type { Health } from './types'
 
 export default function App() {
   const cache = useAnalysisCache()
   const player = usePlayer()
   const { health, reachable, reload: reloadHealth, setHealth } = useHealth()
+  const { info: updateInfo, dismiss: dismissUpdate } = useUpdateCheck()
   const { tracks, loading, error, refetch } = useTracks()
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -117,9 +121,17 @@ export default function App() {
                 detected library: <code>{health.detected_library_path}</code>
               </div>
             )}
+            {health.rekordbox_agent_running && !health.rekordbox_running && (
+              <div className="meta detected">
+                Rekordbox cloud sync agent is running — pause sync before saving so
+                it doesn't overwrite your edits.
+              </div>
+            )}
           </>
         )}
       </header>
+
+      <UpdateBanner info={updateInfo} onDismiss={dismissUpdate} />
 
       {rekordboxRunning && <RekordboxBanner onRecheck={recheck} busy={rechecking} />}
 
@@ -199,7 +211,8 @@ export default function App() {
       )}
 
       <footer className="app-footer">
-        rekordbox bass notes{health ? ` v${health.version}` : ''}
+        <span>rekordbox bass notes{health ? ` v${health.version}` : ''}</span>
+        <CopyDiagnostics />
       </footer>
     </div>
   )

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { switchDb } from '../api'
 import type { Health } from '../types'
+import { BrowseButton } from './BrowseButton'
 
 interface Props {
   health: Health
@@ -44,6 +45,7 @@ export function DbSwitcher({ health, onSwitched }: Props) {
             onChange={(e) => setPath(e.target.value)}
             disabled={busy}
           />
+          <BrowseButton onPicked={setPath} label="browse…" />
           <button
             className="linklike"
             disabled={busy || !path.trim()}

@@ -305,13 +305,38 @@ class RekordboxDB:
             )
 
 
-def rekordbox_running() -> bool:
-    """True if a Rekordbox process is running (the DB must be closed to write)."""
+def _any_process_named(target: str) -> bool:
+    """True if any running process's name (minus a Windows ``.exe``, trimmed and
+    case-folded) is exactly ``target``."""
     for p in psutil.process_iter(["name"]):
-        name = (p.info.get("name") or "").lower()
-        if name == "rekordbox" or name.startswith("rekordbox"):
+        if os.path.splitext(p.info.get("name") or "")[0].strip().lower() == target:
             return True
     return False
+
+
+def rekordbox_running() -> bool:
+    """True if the Rekordbox desktop app itself is running.
+
+    Matches a process named exactly ``rekordbox`` — the same test pyrekordbox's
+    ``commit()`` guard uses (``utils.get_process_id``), so this pre-check and the
+    library's own check always agree. A *prefix* match would also catch this
+    app's own ``rekordbox bass notes`` process (packaged), permanently blocking
+    every write, so the match is exact.
+
+    ``rekordboxAgent`` (cloud/library sync) is intentionally not matched here —
+    it doesn't hold the master.db write lock. See ``rekordbox_agent_running``.
+    """
+    return _any_process_named("rekordbox")
+
+
+def rekordbox_agent_running() -> bool:
+    """True if ``rekordboxAgent`` (the cloud / library-sync helper) is running.
+
+    It frequently keeps running as a login item after Rekordbox itself is quit.
+    Advisory only: it does not block writes, but the UI uses it to suggest
+    pausing sync so Rekordbox's cloud sync doesn't race a write to master.db.
+    """
+    return _any_process_named("rekordboxagent")
 
 
 def detect_library_path() -> Optional[str]:

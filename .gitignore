@@ -22,3 +22,9 @@ frontend/.vite/
 
 # runtime config (dev)
 .rkbx-config.json
+
+# dev log output (frozen app logs to ~/Library/Logs/)
+.logs/
+
+# PyInstaller (dist/ already covered above)
+/build/
