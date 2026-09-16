@@ -8,6 +8,8 @@ track's **Comment** field — with a confirmation step and automatic backups.
 See [`PLAN.md`](PLAN.md) for the design and build history, and
 [`DISTRIBUTION.md`](DISTRIBUTION.md) for the plan to package it as a macOS app.
 
+![Rekordbox bass notes: batch-analysis preview](rekordbox-bass-notes.png)
+
 > **Status:** working POC. Single user, local only, no auth. Only the `Commnt`
 > field is written — one track, or many in one atomic transaction.
 > `pyrekordbox` write support is officially "experimental" — hence the backups
@@ -88,10 +90,10 @@ Open <http://localhost:5173>.
    bar chart whose first three bars are the **L / M / H** sub-bass bands —
    20–39 / 39–77 / 77–150 Hz, matching the analysis token — each letter-labelled
    and in a cool cyan→violet palette that stays distinct in greyscale). The **l / m / h**
-   columns show the digits parsed out of any existing `B:l#m#h#` token in the
-   comment (blank if none). **Click any column header** to sort by it — first
-   click ascending, second descending, third clears; tracks with no token sort
-   to the bottom of the l/m/h sorts.
+   columns show the digits from the existing `B:l#m#h#` token, or an analysis
+   preview as it arrives (blank if neither exists). **Click any column header**
+   to sort by it — first click ascending, second descending, third clears;
+   tracks with no token sort to the bottom of the l/m/h sorts.
 2. **One track selected** → **Analyze audio** → band table, the `B:l#m#h#`
    token, a preview of the new comment → **Save to Rekordbox** → confirm
    dialog (old → new) → write. Results are **cached for the current library** —
