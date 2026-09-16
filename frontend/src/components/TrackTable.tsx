@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useAnalysisCache } from '../analysisCache'
 import { parseBassToken } from '../bassToken'
 import { usePlayer } from '../player'
 import type { Track } from '../types'
@@ -72,15 +73,19 @@ function compare(a: Row, b: Row, key: SortKey, dir: SortDir): number {
 
 export function TrackTable({ tracks, selectedIds, onToggle, onToggleAll }: Props) {
   const player = usePlayer()
+  const cache = useAnalysisCache()
   const [sort, setSort] = useState<Sort>(null)
 
   const rows = useMemo<Row[]>(
     () =>
       tracks.map((track) => {
-        const b = parseBassToken(track.comment)
+        // Analysis is not written to Rekordbox until the user confirms Save,
+        // but its proposed token should be visible in the main L/M/H columns
+        // immediately as streamed batch results arrive.
+        const b = parseBassToken(cache.get(track.id)?.proposed_comment ?? track.comment)
         return { track, l: b?.l ?? null, m: b?.m ?? null, h: b?.h ?? null }
       }),
-    [tracks],
+    [tracks, cache],
   )
 
   const sorted = useMemo<Row[]>(() => {

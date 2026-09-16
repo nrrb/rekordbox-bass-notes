@@ -1,10 +1,16 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { analyzeTracksStream } from '../api'
 import { itemToResponse, useAnalysisCache } from '../analysisCache'
 import type { BatchAnalyzeItem } from '../types'
 
 export function useBatchAnalyze() {
   const cache = useAnalysisCache()
+  // Cache updates re-render this hook. Keep the latest API in a ref so the
+  // selection helpers stay stable while a batch stream is in progress.
+  const cacheRef = useRef(cache)
+  useEffect(() => {
+    cacheRef.current = cache
+  }, [cache])
   const [items, setItems] = useState<Map<string, BatchAnalyzeItem>>(new Map())
   const [running, setRunning] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -18,7 +24,7 @@ export function useBatchAnalyze() {
       abortRef.current?.abort()
       const m = new Map<string, BatchAnalyzeItem>()
       ids.forEach((id) => {
-        const c = cache.get(id)
+        const c = cacheRef.current.get(id)
         if (c) m.set(id, { ...c, id, index: 0, total: ids.length, ok: true })
       })
       setItems(m)
@@ -26,7 +32,7 @@ export function useBatchAnalyze() {
       setRunning(false)
       setProgress({ done: m.size, total: ids.length })
     },
-    [cache],
+    [],
   )
 
   const start = useCallback(
@@ -37,7 +43,7 @@ export function useBatchAnalyze() {
       const seeded = new Map<string, BatchAnalyzeItem>()
       const uncached: string[] = []
       ids.forEach((id) => {
-        const c = cache.get(id)
+        const c = cacheRef.current.get(id)
         if (c) seeded.set(id, { ...c, id, index: 0, total: ids.length, ok: true })
         else uncached.push(id)
       })
@@ -55,8 +61,9 @@ export function useBatchAnalyze() {
       setRunning(true)
       try {
         for await (const it of analyzeTracksStream(uncached, ac.signal)) {
+          if (ac.signal.aborted) break
           setItems((m) => new Map(m).set(it.id, it))
-          if (it.ok) cache.set(it.id, itemToResponse(it))
+          if (it.ok) cacheRef.current.set(it.id, itemToResponse(it))
           setProgress((p) => ({ done: p.done + 1, total: ids.length }))
         }
       } catch (e: unknown) {
@@ -64,10 +71,14 @@ export function useBatchAnalyze() {
           setError(e instanceof Error ? e.message : String(e))
         }
       } finally {
-        setRunning(false)
+        // A later selection/start owns its own running state.
+        if (abortRef.current === ac) {
+          abortRef.current = null
+          setRunning(false)
+        }
       }
     },
-    [cache],
+    [],
   )
 
   const reset = useCallback(() => {
